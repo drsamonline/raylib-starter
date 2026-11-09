@@ -67,6 +67,123 @@ static int gk_rng_pick(gk_rng *r, int n) {
     return i < 0 ? 0 : (i >= n ? n - 1 : i);
 }
 
+
+/* ---------- motion: easing and springs ---------- */
+/* The same curves and springs as motion-kit, so a C game and a JS game move
+   alike. The numbers are the tests' business: see test_motion() in the suite. */
+
+typedef struct { double x1, y1, x2, y2; } gk_ease_t;
+
+/* UnitBezier: solve x for the parameter, then read y. Newton first, bisection
+   when the derivative is too flat - the same approach as motion-kit and as a
+   browser, so the same curve lands in the same place. */
+static double gk_bezier_y(const gk_ease_t *e, double x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    double cx = 3 * e->x1, bx = 3 * (e->x2 - e->x1) - cx, ax = 1 - cx - bx;
+    double cy = 3 * e->y1, by = 3 * (e->y2 - e->y1) - cy, ay = 1 - cy - by;
+
+    double t = x, i;
+    for (i = 0; i < 8; i++) {
+        double x2 = ((ax * t + bx) * t + cx) * t - x;
+        if (fabs(x2) < 1e-6) return ((ay * t + by) * t + cy) * t;
+        double d = (3 * ax * t + 2 * bx) * t + cx;
+        if (fabs(d) < 1e-6) break;
+        t -= x2 / d;
+    }
+    double lo = 0, hi = 1;
+    t = x;
+    for (i = 0; i < 20; i++) {
+        double xv = ((ax * t + bx) * t + cx) * t;
+        if (fabs(xv - x) < 1e-6) break;
+        if (xv < x) lo = t; else hi = t;
+        t = (lo + hi) / 2;
+    }
+    return ((ay * t + by) * t + cy) * t;
+}
+
+typedef struct { const char *name; gk_ease_t curve; } gk_ease_entry;
+
+/* The eleven curves motion-kit ships, in its order. */
+static const gk_ease_entry GK_EASES[] = {
+    { "soft",     { 0.32, 0.72, 0, 1 } },
+    { "exit",     { 0.4, 0, 1, 1 } },
+    { "out",      { 0.215, 0.61, 0.355, 1 } },
+    { "inOut",    { 0.645, 0.045, 0.355, 1 } },
+    { "outBack",  { 0.12, 0.4, 0.29, 1.46 } },
+    { "outQuint", { 0.23, 1, 0.32, 1 } },
+    { "outCirc",  { 0.08, 0.82, 0.17, 1 } },
+    { "css",      { 0.25, 0.1, 0.25, 1 } },
+    { "cssIn",    { 0.42, 0, 1, 1 } },
+    { "toast",    { 0.22, 1, 0.36, 1 } },
+    { "linear",   { 0, 0, 1, 1 } },
+};
+#define GK_EASE_COUNT ((int)(sizeof GK_EASES / sizeof GK_EASES[0]))
+
+static const gk_ease_t *gk_ease_named(const char *name) {
+    for (int i = 0; i < GK_EASE_COUNT; i++) {
+        if (strcmp(GK_EASES[i].name, name) == 0) return &GK_EASES[i].curve;
+    }
+    return NULL;
+}
+
+static double gk_ease(const gk_ease_t *e, double t) { return gk_bezier_y(e, t); }
+
+/* ---------- springs ---------- */
+typedef struct { double stiffness, damping, mass; } gk_spring_t;
+
+/* The unit spring's step response and settle time, exactly as motion-kit
+   computes them, so "smooth over 300 ms" means the same thing in both. */
+static double gk_step_response(double zeta, double t) {
+    if (zeta >= 1) return 1 - exp(-t) * (1 + t);
+    double wd = sqrt(1 - zeta * zeta);
+    return 1 - exp(-zeta * t) * (cos(wd * t) + (zeta / wd) * sin(wd * t));
+}
+
+static double gk_unit_settle(double zeta, double threshold) {
+    const double STEP = 0.0005, HORIZON = 60.0;
+    double last = 0;
+    for (double t = 0; t < HORIZON; t += STEP) {
+        if (fabs(gk_step_response(zeta, t) - 1) > threshold) last = t;
+    }
+    return last;
+}
+
+/* zeta + threshold + settle in ms -> the stiffness and damping that land there. */
+static gk_spring_t gk_spring_preset(double zeta, double threshold, double settle_ms) {
+    double omega = gk_unit_settle(zeta, threshold) / (settle_ms / 1000.0);
+    gk_spring_t s = { omega * omega, 2 * zeta * omega, 1 };
+    return s;
+}
+
+static gk_spring_t gk_smooth(double settle_ms) { return gk_spring_preset(1.0, 0.001, settle_ms); }
+static gk_spring_t gk_snappy(double settle_ms) { return gk_spring_preset(0.8, 0.001, settle_ms); }
+static gk_spring_t gk_bouncy(double settle_ms) { return gk_spring_preset(0.7, 0.003, settle_ms); }
+
+/* The analytic solution of the damped oscillator, pulled from 0 to 1. */
+static double gk_spring_at(gk_spring_t s, double ms) {
+    double t = (ms > 0 ? ms : 0) / 1000.0;
+    if (t == 0) return 0;
+    double w0 = sqrt(s.stiffness / s.mass);
+    double zeta = s.damping / (2 * sqrt(s.stiffness * s.mass));
+    if (zeta < 1) {
+        double wd = w0 * sqrt(1 - zeta * zeta);
+        return 1 - exp(-zeta * w0 * t) * (cos(wd * t) + (zeta * w0 / wd) * sin(wd * t));
+    }
+    if (zeta == 1) return 1 - exp(-w0 * t) * (1 + w0 * t);
+    double wp = w0 * sqrt(zeta * zeta - 1);
+    return 1 - exp(-zeta * w0 * t) * (cosh(wp * t) + (zeta * w0 / wp) * sinh(wp * t));
+}
+
+/* ---------- tween ---------- */
+static double gk_tween(double from, double to, double dur_ms, const gk_ease_t *e, double ms) {
+    double p = dur_ms <= 0 ? 1 : ms / dur_ms;
+    if (p < 0) p = 0;
+    if (p > 1) p = 1;
+    double k = e ? gk_ease(e, p) : p;
+    return from + (to - from) * k;
+}
+
 /* ---------- loop ---------- */
 typedef void (*gk_step_fn)(void *ud, double step);
 typedef void (*gk_draw_fn)(void *ud, double alpha);
@@ -405,6 +522,7 @@ typedef struct {
 
     float px, py;            /* the player */
     int score, best, left;   /* left = motes still to collect */
+    double pulse;            /* eases out when a mote is collected */
     double clock;
     uint32_t player_id;
     gk_body player_body;
@@ -499,6 +617,8 @@ static void play_update(void *ud, double step) {
     G.py = G.player_body.box.y;
 
     gk_ecs_run(&G.world);
+    if (G.pulse > 0) G.pulse -= step * 3.0;
+    if (G.pulse < 0) G.pulse = 0;
 
     /* collect: the player against every mote */
     for (int i = 0; i < G.world.count; i++) {
@@ -509,6 +629,7 @@ static void play_update(void *ud, double step) {
         if (!b || !wr) continue;
         if (gk_aabb(G.player_body.box, b->box)) {
             G.score += wr->value;
+            G.pulse = 1.0;
             gk_ecs_destroy(&G.world, e->id); /* swap-removes, so step back */
             G.left--;
             i--;
@@ -543,6 +664,15 @@ static void play_render(void *ud, double alpha) {
     (void)ud; (void)alpha;
     DrawRectangleRec((Rectangle){ G.player_body.box.x, G.player_body.box.y,
                                   G.player_body.box.w, G.player_body.box.h }, RAYWHITE);
+    /* the collect pulse: a ring that eases outward, the same curve a JS game uses */
+    if (G.pulse > 0) {
+        const gk_ease_t *e = gk_ease_named("out");
+        float k = (float)gk_ease(e, 1.0 - G.pulse);
+        float grow = 6.0f * k;
+        DrawRectangleLines((int)(G.player_body.box.x - grow), (int)(G.player_body.box.y - grow),
+                           (int)(G.player_body.box.w + grow * 2), (int)(G.player_body.box.h + grow * 2),
+                           Fade(GREEN, 1.0f - k));
+    }
     for (int i = 0; i < G.world.count; i++) {
         gk_entity *e = &G.world.ents[i];
         if (e->id == G.player_id) continue;

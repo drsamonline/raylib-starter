@@ -39,6 +39,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_save` / `gk_load` | a struct on disk with a magic, a version and a CRC32, so a half-written save is caught, not loaded |
 | `gk_ecs` | entities, component bags and systems over a bitmask; systems are handed the entity, so component access is O(1); fixed capacity, no allocation |
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
+| `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
 
 ### Targets
@@ -86,7 +87,7 @@ tests can drive the real game headless.
 
 ```
 make test
-100 passed, 0 failed    (the demo game)
+138 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
@@ -96,6 +97,9 @@ What the suite covers, all headless — no engine, no window, no display:
   giving 60 steps, the step cap holding and resetting the accumulator, alpha in `[0,1)`
 - **the RNG**: five values from seed 12345 compared against `game-kit`'s JavaScript output to
   1e-12, seed 1 likewise, `rng_int` inside its bounds and reaching both ends, `rng_pick` in range
+- **the motion**: all eleven easing curves checked at t = 0.25/0.5/0.75 against `motion-kit`'s
+  JavaScript to 1e-9, the `smooth`/`snappy`/`bouncy` presets against its stiffness and damping,
+  and each spring's curve at seven points — so a C game and a JS game move identically
 - **scenes**: enter before exit ordering, routing of update and render, an unknown scene refused
 - **save**: round-trip, a size mismatch, a foreign magic, a future version, one corrupted payload
   byte caught by the CRC, and an empty payload
@@ -137,6 +141,22 @@ Being precise, because "it builds" is easy to overclaim:
 - **What still is not proven**: that raylib itself draws. Everything above runs against the stub,
   so a wrong `DrawText` argument or a bad window flag would only show up on a machine with a GPU
   and a display.
+
+## The same motion as the JS kits
+
+`motion-kit` and this starter now share a vocabulary, and the tests hold them together:
+
+| From motion-kit | In C | Agreement |
+| --- | --- | --- |
+| 11 cubic-bezier curves | `gk_ease_named("out")` etc. | 1e-9 at three points each |
+| `smooth(300)` stiffness / damping | `gk_smooth(300)` | 947.203211111 / 61.553333333 |
+| `snappy(250)` | `gk_snappy(250)` | 1148.803236 / 54.2304 |
+| `bouncy(280)` | `gk_bouncy(280)` | 662.878584183 / 36.045 |
+| spring value at time t | `gk_spring_at(s, ms)` | 1e-9 across seven samples |
+| `tween(from, to, dur, ease)` | `gk_tween(...)` | endpoints, midpoint, clamp |
+
+The demo game uses it: collecting a mote eases a ring outward on the `out` curve, which is the
+same curve the JS kits use for the same gesture.
 
 ## Portability, measured
 

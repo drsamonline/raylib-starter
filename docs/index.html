@@ -35,7 +35,7 @@ code{background:rgba(127,127,127,.14);padding:1px 5px;border-radius:4px;font-siz
 
 <main>
   <div class="big">
-    <div class="card"><b>135</b><span>assertions, both games, all passing</span></div>
+    <div class="card"><b>173</b><span>assertions, both games, all passing</span></div>
     <div class="card"><b>57 KB</b><span>the game's own code, -O2 object</span></div>
     <div class="card"><b>10 MB</b><span>the ceiling <code>make size</code> enforces</span></div>
     <div class="card"><b>0</b><span>engine calls in the core</span></div>
@@ -72,6 +72,7 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
       <tr><td><code>gk_save</code></td><td>magic + version + CRC32, so a half-written save is caught rather than loaded</td></tr>
       <tr><td><code>gk_ecs</code></td><td>entities, component bags and systems over a bitmask, fixed capacity, no malloc</td></tr>
       <tr><td><code>gk_rng</code></td><td>mulberry32 — the same sequence as game-kit's <code>rng()</code>, verified to 1e-12</td></tr>
+      <tr><td><code>gk_ease</code>, <code>gk_spring</code>, <code>gk_tween</code></td><td>motion-kit's 11 curves and settle-time springs, verified to 1e-9</td></tr>
     </tbody>
   </table>
 

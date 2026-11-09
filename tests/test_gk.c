@@ -93,6 +93,95 @@ static void test_rng(void) {
     OK("rng_pick of one element is 0", gk_rng_pick(&r, 1) == 0);
 }
 
+
+/* ---------- motion: the same curves and springs as motion-kit ---------- */
+static int ease_is_monotonic(const gk_ease_t *e) {
+    double last = -1;
+    for (double p = 0; p <= 1.0001; p += 0.01) {
+        double v = gk_ease(e, p);
+        if (v < last - 1e-9) return 0;
+        last = v;
+    }
+    return 1;
+}
+
+static void test_motion(void) {
+    /* the reference values are motion-kit's own output, in JavaScript */
+    struct { const char *name; double at25, at50, at75; } ref[] = {
+        { "soft",     0.779131353905, 0.954809411668, 0.992348713951 },
+        { "exit",     0.098626562350, 0.324814610578, 0.630084361093 },
+        { "out",      0.600300054782, 0.875094244823, 0.976024025500 },
+        { "inOut",    0.087230029862, 0.516875000000, 0.931267701740 },
+        { "outBack",  0.768725537161, 1.066202719226, 1.107019768530 },
+        { "outQuint", 0.775381656265, 0.965982780444, 0.997362255473 },
+        { "outCirc",  0.838077510531, 0.957911779367, 0.992719998615 },
+        { "css",      0.408510593016, 0.802403387695, 0.960459072953 },
+        { "cssIn",    0.093464650994, 0.315356812506, 0.621861869174 },
+        { "toast",    0.764864719749, 0.961382593944, 0.996894217613 },
+        { "linear",   0.250000001431, 0.500000000000, 0.749999998569 },
+    };
+    for (unsigned i = 0; i < sizeof ref / sizeof ref[0]; i++) {
+        const gk_ease_t *e = gk_ease_named(ref[i].name);
+        if (!e) { OK("every named curve exists", 0); continue; }
+        int same = near(gk_ease(e, 0.25), ref[i].at25, 1e-9) &&
+                   near(gk_ease(e, 0.5), ref[i].at50, 1e-9) &&
+                   near(gk_ease(e, 0.75), ref[i].at75, 1e-9);
+        OKD(ref[i].name, same, "%.12f %.12f %.12f",
+            gk_ease(e, 0.25), gk_ease(e, 0.5), gk_ease(e, 0.75));
+    }
+    OK("eleven curves are named", GK_EASE_COUNT == 11);
+    OK("an unknown curve is null", gk_ease_named("nope") == NULL);
+
+    /* endpoints and shape */
+    for (int i = 0; i < GK_EASE_COUNT; i++) {
+        const gk_ease_t *e = &GK_EASES[i].curve;
+        if (gk_ease(e, 0) != 0 || gk_ease(e, 1) != 1) { OK("every curve starts at 0 and ends at 1", 0); break; }
+        if (i == GK_EASE_COUNT - 1) OK("every curve starts at 0 and ends at 1", 1);
+    }
+    OK("out is front-loaded", gk_ease(gk_ease_named("out"), 0.25) > 0.25);
+    OK("exit is back-loaded", gk_ease(gk_ease_named("exit"), 0.25) < 0.25);
+    OK("outBack overshoots past 1", gk_ease(gk_ease_named("outBack"), 0.75) > 1.0);
+    OK("inOut is symmetric about the middle", near(gk_ease(gk_ease_named("inOut"), 0.5), 0.5, 0.02));
+    OK("a curve is monotonic where it should be", ease_is_monotonic(gk_ease_named("out")));
+
+    /* springs: the presets must land on the same stiffness and damping */
+    gk_spring_t sm = gk_smooth(300), sn = gk_snappy(250), bo = gk_bouncy(280);
+    OKD("smooth(300) stiffness matches motion-kit", near(sm.stiffness, 947.203211111, 1e-6), "%.9f", sm.stiffness);
+    OKD("smooth(300) damping matches motion-kit", near(sm.damping, 61.553333333, 1e-6), "%.9f", sm.damping);
+    OKD("snappy(250) stiffness matches", near(sn.stiffness, 1148.803236000, 1e-6), "%.9f", sn.stiffness);
+    OKD("snappy(250) damping matches", near(sn.damping, 54.230400000, 1e-6), "%.9f", sn.damping);
+    OKD("bouncy(280) stiffness matches", near(bo.stiffness, 662.878584183, 1e-6), "%.9f", bo.stiffness);
+    OKD("bouncy(280) damping matches", near(bo.damping, 36.045000000, 1e-6), "%.9f", bo.damping);
+    OK("a preset has unit mass", sm.mass == 1 && sn.mass == 1 && bo.mass == 1);
+
+    /* the curve a spring draws, at seven points, against the JavaScript */
+    double want_sm[7] = { 0, 0.455086752238, 0.812155678677, 0.944467747778, 0.984815427504, 0.996040012317, 0.998999626859 };
+    double want_sn[7] = { 0, 0.572134798995, 0.950402114386, 1.014974993124, 1.007356171422, 1.001000060211, 0.999782495613 };
+    double want_bo[7] = { 0, 0.437209126619, 0.887756107654, 1.037540153397, 1.037000401679, 1.012031086252, 0.999822861502 };
+    int ms[7] = { 0, 50, 100, 150, 200, 250, 300 };
+    int ok_sm = 1, ok_sn = 1, ok_bo = 1;
+    for (int i = 0; i < 7; i++) {
+        if (!near(gk_spring_at(sm, ms[i]), want_sm[i], 1e-9)) ok_sm = 0;
+        if (!near(gk_spring_at(sn, ms[i]), want_sn[i], 1e-9)) ok_sn = 0;
+        if (!near(gk_spring_at(bo, ms[i]), want_bo[i], 1e-9)) ok_bo = 0;
+    }
+    OKD("smooth(300) follows motion-kit's curve", ok_sm, "at 150ms %.12f", gk_spring_at(sm, 150));
+    OKD("snappy(250) follows motion-kit's curve", ok_sn, "at 150ms %.12f", gk_spring_at(sn, 150));
+    OKD("bouncy(280) follows motion-kit's curve", ok_bo, "at 150ms %.12f", gk_spring_at(bo, 150));
+    OK("bouncy overshoots", gk_spring_at(bo, 150) > 1.0);
+    OK("smooth does not overshoot", gk_spring_at(sm, 150) < 1.0);
+    OK("a spring lands on 1", near(gk_spring_at(sm, 300), 1, 0.002));
+
+    /* tween */
+    const gk_ease_t *lin = gk_ease_named("linear");
+    OK("tween starts at from", gk_tween(10, 20, 200, lin, 0) == 10);
+    OK("tween ends at to", gk_tween(10, 20, 200, lin, 200) == 20);
+    OK("tween midpoint", near(gk_tween(10, 20, 200, lin, 100), 15, 1e-6));
+    OK("tween clamps past the end", gk_tween(10, 20, 200, lin, 999) == 20);
+    OK("a zero duration jumps", gk_tween(10, 20, 0, lin, 0) == 20);
+    OK("tween uses the curve", gk_tween(0, 100, 100, gk_ease_named("out"), 25) > 25);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -404,6 +493,7 @@ static void test_game(void) {
 int main(void) {
     printf("raylib-starter tests\n\n");
     test_maths();
+    test_motion();
     test_rng();
     test_loop();
     test_input();
