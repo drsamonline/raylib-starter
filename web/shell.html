@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- web/shell.html — the Emscripten shell for the game.
+     Emscripten replaces the placeholders and writes gk.html next to this file.
+     It is deliberately plain: a canvas, a loader, and no framework. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>raylib-starter</title>
+  <style>
+    :root { --bg: #14161c; --ink: #e7e9ee; --mut: #9aa3b2; --acc: #22c55e; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    body { display: grid; place-items: center; padding: 16px; }
+    main { width: min(680px, 100%); text-align: center; }
+    canvas { width: 100%; height: auto; image-rendering: pixelated;
+      border: 1px solid #252a34; border-radius: 12px; background: #0b0d12; touch-action: none; }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    p { margin: 0 0 14px; color: var(--mut); font-size: 13px; }
+    #status { color: var(--acc); font-size: 13px; min-height: 1.2em; }
+    kbd { background: #1d222b; border: 1px solid #252a34; border-radius: 5px;
+      padding: 1px 5px; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>raylib-starter</h1>
+  <p>arrows move · <kbd>space</kbd> starts · the same <code>main.c</code> as the desktop build</p>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+  <p id="status">loading…</p>
+</main>
+
+<script type="text/javascript">
+  /* Emscripten's Module hook: the canvas and the status line, nothing else. */
+  var status = document.getElementById("status");
+  var Module = {
+    canvas: (function () {
+      var c = document.getElementById("canvas");
+      c.addEventListener("webglcontextlost", function (e) { e.preventDefault(); }, false);
+      return c;
+    })(),
+    setStatus: function (text) { status.textContent = text || ""; },
+    print: function (text) { if (text) console.log(text); },
+    printErr: function (text) { console.error(text); },
+    onRuntimeInitialized: function () {
+      status.textContent = "click the canvas, then use the arrow keys";
+      var c = document.getElementById("canvas");
+      c.addEventListener("click", function () { c.focus(); });
+    }
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

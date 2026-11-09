@@ -13,9 +13,11 @@ the web (via Emscripten), Android and a Raspberry Pi.
 ## Use it
 
 ```bash
-make            # the game        (needs raylib)
-make test       # the suite       (needs only a C compiler)
-make size       # fail if over 10 MB
+make              # the game        (needs raylib)
+make test         # the suite       (needs only a C compiler)
+make size         # fail if over 10 MB
+make web          # the game in a browser (needs emsdk + raylib for wasm)
+make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing installed
 ```
 
 ```c
@@ -38,6 +40,16 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_ecs` | entities, component bags and systems over a bitmask; fixed capacity, no allocation |
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
+
+### Targets
+
+| target | needs | gives |
+| --- | --- | --- |
+| `make` | raylib + a C compiler | `gk`, the desktop game |
+| `make test` | a C compiler | 99 assertions, headless, no display |
+| `make size` | raylib | builds, then fails above 10 MB |
+| `make web` | emsdk + raylib built for wasm | `web/gk.html` + `.js` + `.wasm` |
+| `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
 
 The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
 all. That is what makes it testable, and it is why the stub exists.
@@ -85,6 +97,11 @@ Being precise, because "it builds" is easy to overclaim:
 - **Size, measured here**: `main.c` compiles to a **57,064-byte** object at `-O2`, and the whole
   game plus stub plus tests links to **24,040 bytes** stripped. The real binary is that object
   plus raylib's static library, which is about 1 MB. `make size` fails the build above 10 MB.
+- **The core compiles for wasm32**: `make wasm-core` produced a **1,351-byte** module at `-Os`
+  with only the loop reachable, which is the portability proof that does not depend on
+  Emscripten being installed.
+- **The Emscripten build was not run here** — emsdk is not installable in the environment this
+  was written in. `make web` and `web/shell.html` are the pieces to run with emsdk present.
 
 ## The stub
 
