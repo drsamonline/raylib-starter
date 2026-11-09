@@ -253,9 +253,17 @@ static int gk_load(const char *path, void *data, uint32_t size) {
 }
 
 /* ---------- ecs ---------- */
+/* Capacities are compile-time, so a bigger game raises them with -D and pays
+   nothing when it does not. No allocation anywhere in the core. */
+#ifndef GK_MAX_ENTITIES
 #define GK_MAX_ENTITIES 256
+#endif
+#ifndef GK_MAX_COMPONENTS
 #define GK_MAX_COMPONENTS 8
+#endif
+#ifndef GK_MAX_SYSTEMS
 #define GK_MAX_SYSTEMS 8
+#endif
 
 typedef struct {
     uint32_t id;
