@@ -50,9 +50,26 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `make size` | raylib | builds, then fails above 10 MB |
 | `make web` | emsdk + raylib built for wasm | `web/gk.html` + `.js` + `.wasm` |
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
+| `make snake` | raylib + a C compiler | `snake`, the second game |
+| `make test-snake` | a C compiler | 35 assertions for the second game |
 
 The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
 all. That is what makes it testable, and it is why the stub exists.
+
+## A second game, to prove it is a starter
+
+`examples/snake.c` includes `main.c` for the core only and brings its own rules, scenes and
+save. That is the real test of whether this is a starter or just one game: if a second game
+cannot reuse the machinery, the machinery is wrong.
+
+```
+make snake          # needs raylib
+make test-snake     # needs only a C compiler
+```
+
+Its suite covers turning (and refusing a reversal), movement on the ticker, eating, the three
+ways to die (wall, self, and the legal move into the cell the tail is leaving), food never
+landing on the snake, and the best score round-tripping through the save file.
 
 ## The demo game
 
@@ -65,7 +82,8 @@ tests can drive the real game headless.
 
 ```
 make test
-99 passed, 0 failed
+99 passed, 0 failed     (the demo game)
+35 passed, 0 failed     (snake)
 ```
 
 What the suite covers, all headless — no engine, no window, no display:
@@ -99,7 +117,12 @@ Being precise, because "it builds" is easy to overclaim:
   plus raylib's static library, which is about 1 MB. `make size` fails the build above 10 MB.
 - **The core compiles for wasm32**: `make wasm-core` produced a **1,351-byte** module at `-Os`
   with only the loop reachable, which is the portability proof that does not depend on
-  Emscripten being installed.
+  Emscripten being installed. CI builds it on every push and fails above **64 KB**, so a
+  retained libc or a creeping dependency is caught rather than noticed later.
+- **Both suites run in CI**: 99 assertions for the demo game and 35 for snake, under gcc on
+  Ubuntu, in the same workflow that builds the wasm core.
+- **Capacities are compile-time**: `-DGK_MAX_ENTITIES=8` was run through the whole suite to
+  prove the core adapts, and the default is 256.
 - **The Emscripten build was not run here** — emsdk is not installable in the environment this
   was written in. `make web` and `web/shell.html` are the pieces to run with emsdk present.
 

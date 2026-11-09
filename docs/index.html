@@ -35,7 +35,7 @@ code{background:rgba(127,127,127,.14);padding:1px 5px;border-radius:4px;font-siz
 
 <main>
   <div class="big">
-    <div class="card"><b>99</b><span>assertions, all passing</span></div>
+    <div class="card"><b>134</b><span>assertions, both games, all passing</span></div>
     <div class="card"><b>57 KB</b><span>the game's own code, -O2 object</span></div>
     <div class="card"><b>10 MB</b><span>the ceiling <code>make size</code> enforces</span></div>
     <div class="card"><b>0</b><span>engine calls in the core</span></div>
@@ -57,6 +57,8 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
       <tr><td><code>make size</code></td><td>raylib</td><td>build, then fail above 10 MB</td></tr>
       <tr><td><code>make web</code></td><td>emsdk + raylib for wasm</td><td><code>web/gk.html</code>, <code>.js</code>, <code>.wasm</code></td></tr>
       <tr><td><code>make wasm-core</code></td><td>a wasm32 compiler</td><td><code>web/gk-core.wasm</code> — 1,351 bytes measured</td></tr>
+      <tr><td><code>make snake</code></td><td>raylib</td><td><code>snake</code>, a second game on the same core</td></tr>
+      <tr><td><code>make test-snake</code></td><td>a C compiler</td><td>35 assertions for snake</td></tr>
     </tbody>
   </table>
 
