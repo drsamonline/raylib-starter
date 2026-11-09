@@ -9,6 +9,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static double g_frame_time = 1.0 / 60.0;
@@ -18,6 +19,20 @@ static int g_key_down[512];
 static int g_key_pressed[512];
 static int g_key_released[512];
 static int g_width = 640, g_height = 400;
+static int g_frame_budget = 0;   /* 0 = run until something closes the window */
+static int g_frames = 0;
+
+/* Read once, on the first frame: GK_FRAMES=n makes a headless run finite. */
+static void stub_read_budget(void) {
+    static int read_once = 0;
+    if (read_once) return;
+    read_once = 1;
+    const char *env = getenv("GK_FRAMES");
+    if (env && *env) g_frame_budget = atoi(env);
+}
+
+void Stub_SetFrameBudget(int frames) { g_frame_budget = frames; }
+int  Stub_Frames(void) { return g_frames; }
 
 void Stub_SetFrameTime(double dt) { g_frame_time = dt; }
 void Stub_KeyDown(int key) {
@@ -49,8 +64,14 @@ void InitWindow(int width, int height, const char *title) {
     (void)title;
     g_width = width;
     g_height = height;
+    stub_read_budget();
 }
-void CloseWindow(void) { g_should_close = 1; }
+void CloseWindow(void) {
+    g_should_close = 1;
+    /* a one-line summary the link check can assert on */
+    printf("frames=%d draws=%d\n", g_frames, g_draw_calls);
+    fflush(stdout);
+}
 bool WindowShouldClose(void) { return g_should_close != 0; }
 void SetTargetFPS(int fps) { (void)fps; }
 
@@ -59,6 +80,8 @@ void EndDrawing(void) {
     /* a frame is over: "pressed" and "released" last exactly one frame */
     memset(g_key_pressed, 0, sizeof g_key_pressed);
     memset(g_key_released, 0, sizeof g_key_released);
+    g_frames++;
+    if (g_frame_budget > 0 && g_frames >= g_frame_budget) g_should_close = 1;
 }
 void ClearBackground(Color color) { (void)color; g_draw_calls++; }
 void DrawRectangle(int x, int y, int w, int h, Color color) {

@@ -26,7 +26,7 @@ MAX_BYTES := 10485760
 EMCC ?= emcc
 RAYLIB_SRC ?= ../raylib
 
-.PHONY: all test size snake test-snake web wasm-core bench cross clean
+.PHONY: all test size snake test-snake link-check web wasm-core bench cross clean
 
 all: $(BIN)
 
@@ -51,8 +51,28 @@ test-snake: $(SNAKE_TEST_BIN)
 	./$(SNAKE_TEST_BIN)
 
 $(SNAKE_TEST_BIN): examples/snake.c tests/test_snake.c stub/raylib.h stub/raylib_stub.c
-	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -I. -Istub \
+	$(CC) $(CFLAGS) -Wno-unused-function -DSNAKE_HEADLESS -I. -Istub \
 		-o $@ examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+
+# Link the REAL main() (not the GK_NO_MAIN core) against the stub and run it for
+# a fixed number of frames. This is the integration check: the game loop, the
+# scene machine, the render path and the key mapping all execute, headless. What
+# it cannot prove is that raylib draws - that needs a GPU and a display.
+LINK_FRAMES ?= 120
+
+link-check: main.c examples/snake.c stub/raylib.h stub/raylib_stub.c
+	$(CC) $(CFLAGS) -Wno-unused-function -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
+	$(CC) $(CFLAGS) -Wno-unused-function -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
+	@for game in gk snake; do \
+		out=$$(GK_FRAMES=$(LINK_FRAMES) ./$$game-linkcheck); \
+		printf '%-6s %s\n' "$$game" "$$out"; \
+		case "$$out" in \
+			frames=$(LINK_FRAMES)" "draws=0) printf 'FAIL: %s drew nothing\n' "$$game"; exit 1;; \
+			frames=$(LINK_FRAMES)" "draws=*) : ;; \
+			*) printf 'FAIL: %s did not run $(LINK_FRAMES) frames\n' "$$game"; exit 1;; \
+		esac; \
+	done
+	@printf 'OK: both games ran %s frames headless\n' "$(LINK_FRAMES)"
 
 # Cross-compile the core for other machines. Needs a compiler that can target
 # them (zig cc can, for all of these) - no NDK, no SDK, no sysroot.
@@ -102,5 +122,6 @@ wasm-core: web/wasm_smoke.c main.c
 	@printf 'web/gk-core.wasm is %s bytes\n' "$$(wc -c < web/gk-core.wasm)"
 
 clean:
-	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) ecs-bench gk-progress.bin test-progress.bin snake-best.bin \
+	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) ecs-bench gk-linkcheck snake-linkcheck \
+		gk-progress.bin test-progress.bin snake-best.bin \
 		web/gk.html web/gk.js web/gk.wasm web/gk-core.wasm

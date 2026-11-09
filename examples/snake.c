@@ -4,11 +4,14 @@
  * only (-DGK_NO_MAIN), and brings its own game, its own scenes and its own
  * save. Nothing from the demo game is reused except the machinery.
  *
- *   cc -std=c11 -O2 -I. -Istub -o snake examples/snake.c stub/raylib_stub.c   (headless)
- *   make snake                                                                 (raylib)
+ *   cc -std=c11 -O2 -DSNAKE_HEADLESS -I. -Istub -o snake-tests examples/snake.c ...
+ *   make snake      (raylib)
  *
  * PolyForm Noncommercial 1.0.0. (c) 2026 Dr Sohil Momin.
  */
+/* The core only: main.c's own game and main() are excluded, always, because this
+   file brings its own. SNAKE_HEADLESS is what hides this game's raylib half. */
+#define GK_NO_MAIN 1
 #include "../main.c"
 
 #define SNAKE_COLS 20
@@ -181,7 +184,7 @@ static void snake_over_update(void *ud, double step) {
     }
 }
 
-#ifndef GK_NO_MAIN
+#ifndef SNAKE_HEADLESS
 #include "raylib.h"
 
 static void snake_title_render(void *ud, double alpha) {
@@ -255,4 +258,4 @@ int main(void) {
     CloseWindow();
     return 0;
 }
-#endif /* GK_NO_MAIN */
+#endif /* SNAKE_HEADLESS */

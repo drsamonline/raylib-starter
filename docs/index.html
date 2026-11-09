@@ -75,6 +75,15 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
     </tbody>
   </table>
 
+  <h2>The closest a GPU-less machine gets</h2>
+  <p class="mut"><code>make link-check</code> links the real <code>main()</code> of both games — not
+  the <code>GK_NO_MAIN</code> core — against the stub and runs each for 120 frames.</p>
+  <pre>gk     frames=120 draws=480
+snake  frames=120 draws=480
+OK: both games ran 120 frames headless</pre>
+  <p class="mut">The loop, the scene machine, the render path and the key mapping all execute.
+  What it cannot prove is that raylib draws: that needs a GPU and a display.</p>
+
   <h2>Portability, measured</h2>
   <table>
     <thead><tr><th>target</th><th>core object</th><th>verified</th></tr></thead>

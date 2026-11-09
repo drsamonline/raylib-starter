@@ -52,6 +52,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
 | `make snake` | raylib + a C compiler | `snake`, the second game |
 | `make test-snake` | a C compiler | 35 assertions for the second game |
+| `make link-check` | a C compiler | both games' real `main()`, 120 frames headless |
 | `make bench` | a C compiler | the ECS benchmark, at a 4096 entity cap |
 | `make cross CC="zig cc"` | a cross-capable compiler | the core compiled for five other machines |
 | `ndk-build` in `android/` | Android NDK + raylib for Android | the game on Android |
@@ -122,12 +123,20 @@ Being precise, because "it builds" is easy to overclaim:
   with only the loop reachable, which is the portability proof that does not depend on
   Emscripten being installed. CI builds it on every push and fails above **64 KB**, so a
   retained libc or a creeping dependency is caught rather than noticed later.
-- **Both suites run in CI**: 99 assertions for the demo game and 35 for snake, under gcc on
+- **Both suites run in CI**: 100 assertions for the demo game and 35 for snake, under gcc on
   Ubuntu, in the same workflow that builds the wasm core.
+- **Both games actually run**: `make link-check` links the real `main()` of each game (not the
+  `GK_NO_MAIN` core) against the stub and runs it for 120 frames. The log reads
+  `gk frames=120 draws=480` and `snake frames=120 draws=480` — the loop, the scene machine, the
+  render path and the key mapping all execute. This is the closest a machine without a GPU can
+  get to "it runs".
 - **Capacities are compile-time**: `-DGK_MAX_ENTITIES=8` was run through the whole suite to
   prove the core adapts, and the default is 256.
 - **The Emscripten build was not run here** — emsdk is not installable in the environment this
   was written in. `make web` and `web/shell.html` are the pieces to run with emsdk present.
+- **What still is not proven**: that raylib itself draws. Everything above runs against the stub,
+  so a wrong `DrawText` argument or a bad window flag would only show up on a machine with a GPU
+  and a display.
 
 ## Portability, measured
 

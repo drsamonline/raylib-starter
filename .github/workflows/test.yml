@@ -27,7 +27,7 @@ jobs:
         run: ./gk-tests
 
       - name: Build the snake suite
-        run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+        run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -DSNAKE_HEADLESS -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
 
       - name: Run the snake suite
         run: ./snake-tests
@@ -41,6 +41,24 @@ jobs:
           "$ZIG" cc -target wasm32-wasi-musl -std=c11 -Os -DGK_NO_MAIN -I. -Istub \
             -Wl,--no-entry -Wl,--export=gk_smoke -o gk-core.wasm web/wasm_smoke.c -lm
           wc -c < gk-core.wasm
+
+      # The integration check: the real main() of both games, linked against the
+      # stub, run for a fixed number of frames. Proves the loop, the scene
+      # machine and the render path execute - not that raylib draws.
+      - name: Run both games headless for 120 frames
+        run: |
+          cc -std=c11 -O2 -Wno-unused-function -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
+          cc -std=c11 -O2 -Wno-unused-function -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
+          for game in gk snake; do
+            out=$(GK_FRAMES=120 ./$game-linkcheck)
+            printf '%-6s %s\n' "$game" "$out"
+            case "$out" in
+              frames=120" "draws=0) printf 'FAIL: %s drew nothing\n' "$game"; exit 1 ;;
+              frames=120" "draws=*) : ;;
+              *) printf 'FAIL: %s did not run 120 frames\n' "$game"; exit 1 ;;
+            esac
+          done
+          printf 'OK: both games ran 120 frames headless\n'
 
       - name: Cross-compile the core for other machines
         run: |

@@ -34,6 +34,10 @@ enum { FLAG_VSYNC_HINT = 0x00000040 };
 
 /* ---- the host, driven by the test harness ---- */
 void Stub_SetFrameTime(double dt);
+/* End the run after n frames, so a headless build of the real main() finishes.
+   Set from the environment with GK_FRAMES, so the game itself needs no change. */
+void Stub_SetFrameBudget(int frames);
+int  Stub_Frames(void);
 void Stub_KeyDown(int key);
 void Stub_KeyUp(int key);
 int  Stub_DrawCalls(void);
