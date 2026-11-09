@@ -26,7 +26,7 @@ MAX_BYTES := 10485760
 EMCC ?= emcc
 RAYLIB_SRC ?= ../raylib
 
-.PHONY: all test size snake test-snake web wasm-core clean
+.PHONY: all test size snake test-snake web wasm-core bench clean
 
 all: $(BIN)
 
@@ -53,6 +53,13 @@ test-snake: $(SNAKE_TEST_BIN)
 $(SNAKE_TEST_BIN): examples/snake.c tests/test_snake.c stub/raylib.h stub/raylib_stub.c
 	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -I. -Istub \
 		-o $@ examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+
+# The ECS benchmark: scan-and-mask against archetype storage. Built with a raised
+# entity cap so the larger sizes can be measured too.
+bench: bench/ecs_bench.c main.c
+	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -DGK_MAX_ENTITIES=4096 \
+		-I. -Istub -o ecs-bench bench/ecs_bench.c -lm
+	./ecs-bench
 
 # The gate: a build that grows past 10 MB fails here rather than at release.
 size: $(BIN)
@@ -81,5 +88,5 @@ wasm-core: web/wasm_smoke.c main.c
 	@printf 'web/gk-core.wasm is %s bytes\n' "$$(wc -c < web/gk-core.wasm)"
 
 clean:
-	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) gk-progress.bin test-progress.bin snake-best.bin \
+	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) ecs-bench gk-progress.bin test-progress.bin snake-best.bin \
 		web/gk.html web/gk.js web/gk.wasm web/gk-core.wasm

@@ -37,7 +37,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_scenes` | named scenes with `enter` / `exit` / `update` / `render`; an unknown name is refused rather than blanking the screen |
 | `gk_input` | key down and pressed-this-frame, driven by the host — no engine types in the core |
 | `gk_save` / `gk_load` | a struct on disk with a magic, a version and a CRC32, so a half-written save is caught, not loaded |
-| `gk_ecs` | entities, component bags and systems over a bitmask; fixed capacity, no allocation |
+| `gk_ecs` | entities, component bags and systems over a bitmask; systems are handed the entity, so component access is O(1); fixed capacity, no allocation |
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
 
@@ -52,6 +52,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
 | `make snake` | raylib + a C compiler | `snake`, the second game |
 | `make test-snake` | a C compiler | 35 assertions for the second game |
+| `make bench` | a C compiler | the ECS benchmark, at a 4096 entity cap |
 
 The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
 all. That is what makes it testable, and it is why the stub exists.
@@ -82,7 +83,7 @@ tests can drive the real game headless.
 
 ```
 make test
-99 passed, 0 failed     (the demo game)
+100 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
@@ -125,6 +126,29 @@ Being precise, because "it builds" is easy to overclaim:
   prove the core adapts, and the default is 256.
 - **The Emscripten build was not run here** — emsdk is not installable in the environment this
   was written in. `make web` and `web/shell.html` are the pieces to run with emsdk present.
+
+## Why not archetype storage
+
+The textbook ECS groups entities by their component set and stores component data inline, so a
+system walks only matching entities and the data is contiguous. It is genuinely faster — and
+`make bench` measures whether that matters here:
+
+| entities | scan ns/entity | archetype ns/entity | ratio |
+| --- | --- | --- | --- |
+| 256 | 8.1 | 0.46 | 17.7× |
+| 1,024 | 17.2 | 0.47 | 36.6× |
+| 4,096 | 8.9 | 2.18 | 4.1× |
+
+The ratio is real and the absolute numbers are not: at the 256-entity default, one system run is
+**2.1 µs** scanning against **0.12 µs** on archetypes — in a 16.6 ms frame at 60 fps that is
+0.013% against 0.0007%. Archetype storage would cost component registration, inline storage and
+archetype churn on every add and remove, to save a hundredth of a millisecond. It stays out, and
+this table is here so the decision can be revisited if a game ever needs thousands of entities.
+
+**The benchmark earned its keep anyway**: the first run showed 260 ns/entity, which turned out to
+be a linear id lookup inside every component access — an O(n²) system. Systems now receive the
+entity itself, `gk_ecs_comp(e, comp)` is O(1), and the same measurement dropped to 8.1 ns: a 30×
+win on the shipped design.
 
 ## The stub
 

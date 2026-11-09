@@ -263,8 +263,16 @@ static void test_save(void) {
 static int g_sys_runs = 0;
 static int g_sys_order[8];
 static int g_sys_n = 0;
-static void sys_a(gk_world *w, uint32_t id) { (void)w; (void)id; g_sys_runs++; g_sys_order[g_sys_n++] = 1; }
-static void sys_b(gk_world *w, uint32_t id) { (void)w; (void)id; g_sys_runs++; g_sys_order[g_sys_n++] = 2; }
+static void sys_a(gk_world *w, gk_entity *e) { (void)w; (void)e; g_sys_runs++; g_sys_order[g_sys_n++] = 1; }
+static void sys_b(gk_world *w, gk_entity *e) { (void)w; (void)e; g_sys_runs++; g_sys_order[g_sys_n++] = 2; }
+
+/* a system that reads a component through the entity it was handed */
+static int g_sys_read_ok = 0;
+static void sys_read(gk_world *w, gk_entity *e) {
+    (void)w;
+    int *v = (int *)gk_ecs_comp(e, COMP_BODY);
+    if (v && *v == 7) g_sys_read_ok++;
+}
 
 static void test_ecs(void) {
     gk_world w;
@@ -288,6 +296,18 @@ static void test_ecs(void) {
     OK("remove one", gk_ecs_remove(&w, e1, COMP_VEL) == 0);
     OK("removed is gone", gk_ecs_has(&w, e1, COMP_VEL) == 0);
     OK("the other survives", gk_ecs_has(&w, e1, COMP_BODY) == 1);
+
+    {
+        gk_world wr;
+        gk_world_init(&wr);
+        uint32_t e = gk_ecs_create(&wr);
+        int seven = 7;
+        gk_ecs_add(&wr, e, COMP_BODY, &seven);
+        g_sys_read_ok = 0;
+        gk_ecs_system(&wr, (1u << COMP_BODY), sys_read);
+        gk_ecs_run(&wr);
+        OK("a system sees its own component without a lookup", g_sys_read_ok == 1);
+    }
 
     OK("add to an unknown entity fails", gk_ecs_add(&w, 999, COMP_BODY, &body) == -1);
     OK("an out-of-range component fails", gk_ecs_add(&w, e1, 99, &body) == -1);

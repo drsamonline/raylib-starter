@@ -265,17 +265,19 @@ static int gk_load(const char *path, void *data, uint32_t size) {
 #define GK_MAX_SYSTEMS 8
 #endif
 
-typedef struct {
+struct gk_entity {
     uint32_t id;
     uint32_t mask;
     void *comp[GK_MAX_COMPONENTS];
-} gk_entity;
+};
 
 typedef struct gk_world gk_world;
 
+typedef struct gk_entity gk_entity;
+
 typedef struct {
     uint32_t mask;
-    void (*fn)(gk_world *, uint32_t id);
+    void (*fn)(gk_world *, gk_entity *e);
 } gk_system;
 
 struct gk_world {
@@ -323,6 +325,18 @@ static int gk_ecs_add(gk_world *w, uint32_t id, int comp, void *data) {
     return 0;
 }
 
+/* The fast path: a system already holds the entity, so there is nothing to look
+   up. Every id-based accessor below is for callers that only have an id. */
+static void *gk_ecs_comp(gk_entity *e, int comp) {
+    if (!e || comp < 0 || comp >= GK_MAX_COMPONENTS) return NULL;
+    return (e->mask & (1u << comp)) ? e->comp[comp] : NULL;
+}
+
+static int gk_ecs_comp_has(gk_entity *e, int comp) {
+    if (!e || comp < 0 || comp >= GK_MAX_COMPONENTS) return 0;
+    return (e->mask & (1u << comp)) ? 1 : 0;
+}
+
 static void *gk_ecs_get(gk_world *w, uint32_t id, int comp) {
     if (comp < 0 || comp >= GK_MAX_COMPONENTS) return NULL;
     gk_entity *e = gk_ecs_slot(w, id);
@@ -346,7 +360,7 @@ static int gk_ecs_remove(gk_world *w, uint32_t id, int comp) {
 
 static int gk_ecs_count(const gk_world *w) { return w->count; }
 
-static int gk_ecs_system(gk_world *w, uint32_t mask, void (*fn)(gk_world *, uint32_t)) {
+static int gk_ecs_system(gk_world *w, uint32_t mask, void (*fn)(gk_world *, gk_entity *)) {
     if (!fn || w->sys_count >= GK_MAX_SYSTEMS) return -1;
     w->systems[w->sys_count].mask = mask;
     w->systems[w->sys_count].fn = fn;
@@ -362,7 +376,7 @@ static int gk_ecs_run(gk_world *w) {
         uint32_t need = w->systems[s].mask;
         for (int i = 0; i < w->count; i++) {
             if ((w->ents[i].mask & need) == need) {
-                w->systems[s].fn(w, w->ents[i].id);
+                w->systems[s].fn(w, &w->ents[i]);
                 ran++;
             }
         }
@@ -414,9 +428,10 @@ static void gk_progress_store(void) {
 }
 
 /* ---------- systems ---------- */
-static void sys_move(gk_world *w, uint32_t id) {
-    gk_body *b = (gk_body *)gk_ecs_get(w, id, COMP_BODY);
-    gk_vel *v = (gk_vel *)gk_ecs_get(w, id, COMP_VEL);
+static void sys_move(gk_world *w, gk_entity *e) {
+    (void)w;
+    gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
+    gk_vel *v = (gk_vel *)gk_ecs_comp(e, COMP_VEL);
     if (!b || !v) return;
     b->box.x += v->x * (float)G.loop.step;
     b->box.y += v->y * (float)G.loop.step;
@@ -487,14 +502,14 @@ static void play_update(void *ud, double step) {
 
     /* collect: the player against every mote */
     for (int i = 0; i < G.world.count; i++) {
-        uint32_t id = G.world.ents[i].id;
-        if (id == G.player_id) continue;
-        gk_body *b = (gk_body *)gk_ecs_get(&G.world, id, COMP_BODY);
-        gk_worth *wr = (gk_worth *)gk_ecs_get(&G.world, id, COMP_WORTH);
+        gk_entity *e = &G.world.ents[i];
+        if (e->id == G.player_id) continue;
+        gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
+        gk_worth *wr = (gk_worth *)gk_ecs_comp(e, COMP_WORTH);
         if (!b || !wr) continue;
         if (gk_aabb(G.player_body.box, b->box)) {
             G.score += wr->value;
-            gk_ecs_destroy(&G.world, id);
+            gk_ecs_destroy(&G.world, e->id); /* swap-removes, so step back */
             G.left--;
             i--;
         }
@@ -529,9 +544,9 @@ static void play_render(void *ud, double alpha) {
     DrawRectangleRec((Rectangle){ G.player_body.box.x, G.player_body.box.y,
                                   G.player_body.box.w, G.player_body.box.h }, RAYWHITE);
     for (int i = 0; i < G.world.count; i++) {
-        uint32_t id = G.world.ents[i].id;
-        if (id == G.player_id) continue;
-        gk_body *b = (gk_body *)gk_ecs_get(&G.world, id, COMP_BODY);
+        gk_entity *e = &G.world.ents[i];
+        if (e->id == G.player_id) continue;
+        gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
         if (!b) continue;
         DrawRectangleRec((Rectangle){ b->box.x, b->box.y, b->box.w, b->box.h }, GREEN);
     }

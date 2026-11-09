@@ -35,7 +35,7 @@ code{background:rgba(127,127,127,.14);padding:1px 5px;border-radius:4px;font-siz
 
 <main>
   <div class="big">
-    <div class="card"><b>134</b><span>assertions, both games, all passing</span></div>
+    <div class="card"><b>135</b><span>assertions, both games, all passing</span></div>
     <div class="card"><b>57 KB</b><span>the game's own code, -O2 object</span></div>
     <div class="card"><b>10 MB</b><span>the ceiling <code>make size</code> enforces</span></div>
     <div class="card"><b>0</b><span>engine calls in the core</span></div>
@@ -74,6 +74,21 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
       <tr><td><code>gk_rng</code></td><td>mulberry32 — the same sequence as game-kit's <code>rng()</code>, verified to 1e-12</td></tr>
     </tbody>
   </table>
+
+  <h2>Why not archetype storage</h2>
+  <p class="mut">Measured with <code>make bench</code>. The ratio is real; the absolute numbers are
+  not — at 256 entities a system run is 2.1 µs against 0.12 µs in a 16.6 ms frame.</p>
+  <table>
+    <thead><tr><th>entities</th><th>scan ns/entity</th><th>archetype ns/entity</th><th>ratio</th></tr></thead>
+    <tbody>
+      <tr><td>256</td><td>8.1</td><td>0.46</td><td>17.7×</td></tr>
+      <tr><td>1,024</td><td>17.2</td><td>0.47</td><td>36.6×</td></tr>
+      <tr><td>4,096</td><td>8.9</td><td>2.18</td><td>4.1×</td></tr>
+    </tbody>
+  </table>
+  <p class="mut">The first run of that benchmark showed 260 ns/entity — a linear id lookup inside
+  every component access, so every system was O(n²). Systems now receive the entity, access is
+  O(1), and the number fell to 8.1 ns.</p>
 
   <h2>Why it tests without an engine</h2>
   <p class="mut">The core has no raylib in it. <code>main.c</code> compiles with
