@@ -26,7 +26,7 @@ MAX_BYTES := 10485760
 EMCC ?= emcc
 RAYLIB_SRC ?= ../raylib
 
-.PHONY: all test size snake test-snake link-check web wasm-core bench cross clean
+.PHONY: all test size size-real snake test-snake link-check web wasm-core bench cross clean
 
 all: $(BIN)
 
@@ -53,6 +53,25 @@ test-snake: $(SNAKE_TEST_BIN)
 $(SNAKE_TEST_BIN): examples/snake.c tests/test_snake.c stub/raylib.h stub/raylib_stub.c
 	$(CC) $(CFLAGS) -Wno-unused-function -DSNAKE_HEADLESS -I. -Istub \
 		-o $@ examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+
+# Measure the real thing: the game linked against a real raylib, not the stub.
+# RAYLIB_DIR points at an unpacked raylib release (include/ and lib/).
+# The weak X11 stubs let this link on a machine with no X server; on one with X11
+# the real symbols win and the binary can actually run.
+RAYLIB_DIR ?= ../raylib
+
+size-real:
+	@test -f $(RAYLIB_DIR)/lib/libraylib.a || { \
+		printf 'needs raylib: unpack a release into %s\n' "$(RAYLIB_DIR)"; exit 1; }
+	$(CC) $(CFLAGS) -I$(RAYLIB_DIR)/include -o gk-real \
+		main.c tools/x11_stubs.c $(RAYLIB_DIR)/lib/libraylib.a \
+		-lm -lpthread -ldl -lrt $(LDFLAGS)
+	@bytes=$$(wc -c < gk-real | tr -d ' '); \
+	printf 'gk-real is %s bytes (%s KB)\n' "$$bytes" "$$((bytes / 1024))"; \
+	if [ "$$bytes" -gt $(MAX_BYTES) ]; then \
+		printf 'FAIL: over the 10 MB ceiling\n'; exit 1; \
+	fi; \
+	printf 'OK: under the 10 MB ceiling, %sx headroom\n' "$$(( $(MAX_BYTES) / bytes ))"
 
 # Link the REAL main() (not the GK_NO_MAIN core) against the stub and run it for
 # a fixed number of frames. This is the integration check: the game loop, the
@@ -122,6 +141,6 @@ wasm-core: web/wasm_smoke.c main.c
 	@printf 'web/gk-core.wasm is %s bytes\n' "$$(wc -c < web/gk-core.wasm)"
 
 clean:
-	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) ecs-bench gk-linkcheck snake-linkcheck \
+	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) ecs-bench gk-linkcheck snake-linkcheck gk-real \
 		gk-progress.bin test-progress.bin snake-best.bin \
 		web/gk.html web/gk.js web/gk.wasm web/gk-core.wasm

@@ -56,6 +56,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `make link-check` | a C compiler | both games' real `main()`, 120 frames headless |
 | `make bench` | a C compiler | the ECS benchmark, at a 4096 entity cap |
 | `make cross CC="zig cc"` | a cross-capable compiler | the core compiled for five other machines |
+| `make size-real` | an unpacked raylib in `RAYLIB_DIR` | the real binary, gated at 10 MB |
 | `ndk-build` in `android/` | Android NDK + raylib for Android | the game on Android |
 
 The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
@@ -120,9 +121,9 @@ Being precise, because "it builds" is easy to overclaim:
 - **The real raylib link was not performed here.** raylib needs X11 and GL headers that this
   environment does not have, so `make` and `make size` are the two things to run on your machine.
   `make` itself is not installed here either; the commands those targets wrap were run directly.
-- **Size, measured here**: `main.c` compiles to a **57,064-byte** object at `-O2`, and the whole
-  game plus stub plus tests links to **24,040 bytes** stripped. The real binary is that object
-  plus raylib's static library, which is about 1 MB. `make size` fails the build above 10 MB.
+- **Size, measured against real raylib**: **902,424 bytes** stripped, linked against raylib 6.2's
+  own `libraylib.a`. That is 881 KB, 11.6× under the 10 MB ceiling. `make size-real` and CI both
+  check it.
 - **The core compiles for wasm32**: `make wasm-core` produced a **1,351-byte** module at `-Os`
   with only the loop reachable, which is the portability proof that does not depend on
   Emscripten being installed. CI builds it on every push and fails above **64 KB**, so a
@@ -157,6 +158,22 @@ Being precise, because "it builds" is easy to overclaim:
 
 The demo game uses it: collecting a mote eases a ring outward on the `out` curve, which is the
 same curve the JS kits use for the same gesture.
+
+## The real binary, measured
+
+`make size-real` links the game against raylib 6.2's own `libraylib.a` — not the stub — and gates
+the result. Measured on raylib 6.2, linux amd64:
+
+| | bytes | |
+| --- | --- | --- |
+| `libraylib.a` | 2,847,000 | the engine, static |
+| game + engine, unstripped | 1,091,856 | dead code already dropped by the linker |
+| game + engine, **stripped** | **902,424** | 881 KB |
+| 10 MB ceiling | 10,485,760 | **11.6× headroom** |
+
+`tools/x11_stubs.c` carries six weak X11 symbols so this links on a machine with no X server;
+on a machine with X11 the real symbols win and the binary runs. CI does this link and the gate
+on every push, downloading raylib 6.2 itself.
 
 ## Portability, measured
 

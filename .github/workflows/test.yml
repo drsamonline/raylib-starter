@@ -60,6 +60,26 @@ jobs:
           done
           printf 'OK: both games ran 120 frames headless\n'
 
+      # The real link: the game against raylib 6.2's own static library, then the
+      # 10 MB gate on the actual binary. The weak X11 stubs let it link on a
+      # runner with no X server; on one with X11 the real symbols win.
+      - name: Link against real raylib and gate the size
+        run: |
+          curl -sL -o raylib.tar.gz \
+            https://github.com/raysan5/raylib/releases/download/6.2/raylib-6.2_linux_amd64.tar.gz
+          tar xzf raylib.tar.gz
+          cc -std=c11 -O2 -Iraylib-6.2_linux_amd64/include -o gk-real \
+            main.c tools/x11_stubs.c raylib-6.2_linux_amd64/lib/libraylib.a \
+            -lm -lpthread -ldl -lrt
+          strip gk-real || true
+          bytes=$(wc -c < gk-real | tr -d ' ')
+          printf 'real binary: %s bytes (%s KB)\n' "$bytes" "$((bytes / 1024))"
+          if [ "$bytes" -gt 10485760 ]; then
+            printf 'FAIL: over the 10 MB ceiling\n'
+            exit 1
+          fi
+          printf 'OK: under the 10 MB ceiling, %sx headroom\n' "$((10485760 / bytes))"
+
       - name: Cross-compile the core for other machines
         run: |
           ZIG=$(python3 -c "import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),'zig'))")
