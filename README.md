@@ -159,6 +159,17 @@ Being precise, because "it builds" is easy to overclaim:
 The demo game uses it: collecting a mote eases a ring outward on the `out` curve, which is the
 same curve the JS kits use for the same gesture.
 
+## Warning-free
+
+Every configuration compiles with `-Wall -Wextra -Werror` — the real build, the headless core,
+the stub link, both games, both suites, the benchmark, the five cross targets and the wasm
+module. Seven configurations, no warnings.
+
+That took two things: a `GK_API` attribute on the core's entry points, because a single
+translation unit that does not use all of them would warn about the rest; and a
+`GK_EXPORT` guard around the wasm-only `export_name` attribute, which the other five targets
+would otherwise reject.
+
 ## The real binary, measured
 
 `make size-real` links the game against raylib 6.2's own `libraylib.a` — not the stub — and gates
@@ -174,6 +185,10 @@ the result. Measured on raylib 6.2, linux amd64:
 `tools/x11_stubs.c` carries six weak X11 symbols so this links on a machine with no X server;
 on a machine with X11 the real symbols win and the binary runs. CI does this link and the gate
 on every push, downloading raylib 6.2 itself.
+
+Plain `make` needs the X11 development headers on Linux (raylib's static library references
+`XConvertSelection` and five others). Where they are missing, `make size-real` is the target
+that still links, because it carries the weak stubs.
 
 ## Portability, measured
 

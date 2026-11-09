@@ -8,7 +8,7 @@
 # Point CC at whatever you have; `CC="zig cc" make test` works too.
 
 CC ?= cc
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror
 LDFLAGS ?=
 
 # raylib: use pkg-config when it is there, otherwise the usual Linux flags.
@@ -34,13 +34,13 @@ $(BIN): main.c
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -o $@ main.c $(RAYLIB_LIBS) $(LDFLAGS)
 
 # The suite compiles main.c with GK_NO_MAIN, so the core and the game run with
-# no window at all. -Wno-unused-function because the headless build has no main.
+# no window at all. because the headless build has no main.
 test: $(TEST_BIN) $(SNAKE_TEST_BIN)
 	./$(TEST_BIN)
 	./$(SNAKE_TEST_BIN)
 
 $(TEST_BIN): main.c stub/raylib.h stub/raylib_stub.c tests/test_gk.c
-	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -I. -Istub \
+	$(CC) $(CFLAGS) -DGK_NO_MAIN -I. -Istub \
 		-o $@ main.c stub/raylib_stub.c tests/test_gk.c -lm
 
 # The second game: the same core, its own rules.
@@ -51,7 +51,7 @@ test-snake: $(SNAKE_TEST_BIN)
 	./$(SNAKE_TEST_BIN)
 
 $(SNAKE_TEST_BIN): examples/snake.c tests/test_snake.c stub/raylib.h stub/raylib_stub.c
-	$(CC) $(CFLAGS) -Wno-unused-function -DSNAKE_HEADLESS -I. -Istub \
+	$(CC) $(CFLAGS) -DSNAKE_HEADLESS -I. -Istub \
 		-o $@ examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
 
 # Measure the real thing: the game linked against a real raylib, not the stub.
@@ -80,8 +80,8 @@ size-real:
 LINK_FRAMES ?= 120
 
 link-check: main.c examples/snake.c stub/raylib.h stub/raylib_stub.c
-	$(CC) $(CFLAGS) -Wno-unused-function -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
-	$(CC) $(CFLAGS) -Wno-unused-function -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
+	$(CC) $(CFLAGS) -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
+	$(CC) $(CFLAGS) -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
 	@for game in gk snake; do \
 		out=$$(GK_FRAMES=$(LINK_FRAMES) ./$$game-linkcheck); \
 		printf '%-6s %s\n' "$$game" "$$out"; \
@@ -110,7 +110,7 @@ cross: web/wasm_smoke.c main.c
 # The ECS benchmark: scan-and-mask against archetype storage. Built with a raised
 # entity cap so the larger sizes can be measured too.
 bench: bench/ecs_bench.c main.c
-	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -DGK_MAX_ENTITIES=4096 \
+	$(CC) $(CFLAGS) -DGK_NO_MAIN -DGK_MAX_ENTITIES=4096 \
 		-I. -Istub -o ecs-bench bench/ecs_bench.c -lm
 	./ecs-bench
 

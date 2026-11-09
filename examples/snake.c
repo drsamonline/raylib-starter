@@ -35,17 +35,17 @@ typedef struct {
     gk_input input;
 } snake_state;
 
-static snake_state S;
+GK_API static snake_state S;   /* the game state; the headless build has no main() */
 
 /* ---------- rules ---------- */
-static int snake_occupies(const snake_state *s, int x, int y) {
+GK_API static int snake_occupies(const snake_state *s, int x, int y) {
     for (int i = 0; i < s->len; i++) if (s->x[i] == x && s->y[i] == y) return 1;
     return 0;
 }
 
 /* Food goes on a free cell. Bounded retries, then a linear scan, so a nearly
    full board still finds the last free cell instead of looping forever. */
-static void snake_place_food(snake_state *s) {
+GK_API static void snake_place_food(snake_state *s) {
     for (int attempt = 0; attempt < 64; attempt++) {
         int x = gk_rng_int(&s->rng, 0, SNAKE_COLS - 1);
         int y = gk_rng_int(&s->rng, 0, SNAKE_ROWS - 1);
@@ -60,7 +60,7 @@ static void snake_place_food(snake_state *s) {
     s->food_y = -1;
 }
 
-static void snake_reset(snake_state *s, uint32_t seed) {
+GK_API static void snake_reset(snake_state *s, uint32_t seed) {
     s->len = 3;
     s->x[0] = SNAKE_COLS / 2;     s->y[0] = SNAKE_ROWS / 2;
     s->x[1] = SNAKE_COLS / 2 - 1; s->y[1] = SNAKE_ROWS / 2;
@@ -75,14 +75,14 @@ static void snake_reset(snake_state *s, uint32_t seed) {
 }
 
 /* A turn into the opposite direction is ignored: the snake cannot reverse. */
-static int snake_turn(snake_state *s, snake_dir d) {
+GK_API static int snake_turn(snake_state *s, snake_dir d) {
     if ((d + 2) % 4 == (int)s->dir) return -1;
     s->dir = d;
     return 0;
 }
 
 /* One step of the snake. Returns 1 when the step killed it. */
-static int snake_move(snake_state *s) {
+GK_API static int snake_move(snake_state *s) {
     int hx = s->x[0], hy = s->y[0];
     switch (s->dir) {
         case SNAKE_UP:    hy--; break;
@@ -120,7 +120,7 @@ static int snake_move(snake_state *s) {
 }
 
 /* Advance by dt, moving one cell every step_every. Returns the steps taken. */
-static int snake_tick(snake_state *s, double dt) {
+GK_API static int snake_tick(snake_state *s, double dt) {
     if (!s->alive) return 0;
     s->timer += dt;
     int steps = 0;
@@ -133,26 +133,26 @@ static int snake_tick(snake_state *s, double dt) {
 }
 
 /* ---------- save ---------- */
-static const char *snake_save_path(void) { return "snake-best.bin"; }
+GK_API static const char *snake_save_path(void) { return "snake-best.bin"; }
 
-static void snake_progress_load(snake_state *s) {
+GK_API static void snake_progress_load(snake_state *s) {
     gk_progress p;
     if (gk_load(snake_save_path(), &p, sizeof p) == GK_SAVE_OK) s->best = p.best;
 }
-static void snake_progress_store(snake_state *s) {
+GK_API static void snake_progress_store(snake_state *s) {
     gk_progress p = { s->best };
     gk_save(snake_save_path(), &p, sizeof p);
 }
 
 /* ---------- scenes ---------- */
-static void snake_read_input(snake_state *s) {
+GK_API static void snake_read_input(snake_state *s) {
     if (gk_input_was_pressed(&s->input, GK_KEY_UP)) snake_turn(s, SNAKE_UP);
     if (gk_input_was_pressed(&s->input, GK_KEY_RIGHT)) snake_turn(s, SNAKE_RIGHT);
     if (gk_input_was_pressed(&s->input, GK_KEY_DOWN)) snake_turn(s, SNAKE_DOWN);
     if (gk_input_was_pressed(&s->input, GK_KEY_LEFT)) snake_turn(s, SNAKE_LEFT);
 }
 
-static void snake_title_update(void *ud, double step) {
+GK_API static void snake_title_update(void *ud, double step) {
     (void)step;
     snake_state *s = (snake_state *)ud;
     if (gk_input_was_pressed(&s->input, GK_KEY_START) || gk_input_was_pressed(&s->input, GK_KEY_ACTION)) {
@@ -160,13 +160,13 @@ static void snake_title_update(void *ud, double step) {
     }
 }
 
-static void snake_play_enter(void *ud, const void *data) {
+GK_API static void snake_play_enter(void *ud, const void *data) {
     (void)data;
     snake_state *s = (snake_state *)ud;
     snake_reset(s, (uint32_t)(s->best * 7919u + 1u));
 }
 
-static void snake_play_update(void *ud, double step) {
+GK_API static void snake_play_update(void *ud, double step) {
     snake_state *s = (snake_state *)ud;
     snake_read_input(s);
     snake_tick(s, step);
@@ -176,7 +176,7 @@ static void snake_play_update(void *ud, double step) {
     }
 }
 
-static void snake_over_update(void *ud, double step) {
+GK_API static void snake_over_update(void *ud, double step) {
     (void)step;
     snake_state *s = (snake_state *)ud;
     if (gk_input_was_pressed(&s->input, GK_KEY_START) || gk_input_was_pressed(&s->input, GK_KEY_ACTION)) {
@@ -187,7 +187,7 @@ static void snake_over_update(void *ud, double step) {
 #ifndef SNAKE_HEADLESS
 #include "raylib.h"
 
-static void snake_title_render(void *ud, double alpha) {
+GK_API static void snake_title_render(void *ud, double alpha) {
     (void)alpha;
     snake_state *s = (snake_state *)ud;
     DrawText("snake", 200, 110, 40, RAYWHITE);
@@ -195,7 +195,7 @@ static void snake_title_render(void *ud, double alpha) {
     DrawText(TextFormat("best %d", s->best), 205, 200, 18, GREEN);
 }
 
-static void snake_play_render(void *ud, double alpha) {
+GK_API static void snake_play_render(void *ud, double alpha) {
     (void)alpha;
     snake_state *s = (snake_state *)ud;
     for (int i = 0; i < s->len; i++) {
@@ -209,7 +209,7 @@ static void snake_play_render(void *ud, double alpha) {
     DrawText(TextFormat("score %d", s->score), 8, 6, 16, RAYWHITE);
 }
 
-static void snake_over_render(void *ud, double alpha) {
+GK_API static void snake_over_render(void *ud, double alpha) {
     (void)alpha;
     snake_state *s = (snake_state *)ud;
     DrawText("over", 200, 120, 34, RAYWHITE);
@@ -217,7 +217,7 @@ static void snake_over_render(void *ud, double alpha) {
     DrawText("space to try again", 170, 210, 16, GRAY);
 }
 
-static void snake_map_keys(snake_state *s) {
+GK_API static void snake_map_keys(snake_state *s) {
     struct { int key; gk_key gk; } map[] = {
         { KEY_UP, GK_KEY_UP }, { KEY_DOWN, GK_KEY_DOWN },
         { KEY_LEFT, GK_KEY_LEFT }, { KEY_RIGHT, GK_KEY_RIGHT },
@@ -229,8 +229,8 @@ static void snake_map_keys(snake_state *s) {
     }
 }
 
-static void snake_loop_step(void *ud, double step) { gk_scenes_update(&S.scenes, ud, step); }
-static void snake_loop_draw(void *ud, double alpha) { gk_scenes_render(&S.scenes, ud, alpha); }
+GK_API static void snake_loop_step(void *ud, double step) { gk_scenes_update(&S.scenes, ud, step); }
+GK_API static void snake_loop_draw(void *ud, double alpha) { gk_scenes_render(&S.scenes, ud, alpha); }
 
 int main(void) {
     InitWindow(SNAKE_COLS * SNAKE_CELL, SNAKE_ROWS * SNAKE_CELL, "snake");

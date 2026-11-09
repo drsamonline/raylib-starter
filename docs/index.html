@@ -76,6 +76,11 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
     </tbody>
   </table>
 
+  <h2>Warning-free</h2>
+  <p class="mut">Seven configurations compile with <code>-Wall -Wextra -Werror</code>: the real
+  build, the headless core, the stub link, both games, both suites, the benchmark, five cross
+  targets and the wasm module.</p>
+
   <h2>The closest a GPU-less machine gets</h2>
   <p class="mut"><code>make link-check</code> links the real <code>main()</code> of both games — not
   the <code>GK_NO_MAIN</code> core — against the stub and runs each for 120 frames.</p>

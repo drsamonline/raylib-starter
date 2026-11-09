@@ -21,13 +21,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
 
       - name: Build the demo game's suite
-        run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
+        run: cc -std=c11 -O2 -Wall -Wextra -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
 
       - name: Run the demo game's suite
         run: ./gk-tests
 
       - name: Build the snake suite
-        run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -DSNAKE_HEADLESS -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+        run: cc -std=c11 -O2 -Wall -Wextra -DGK_NO_MAIN -I. -Istub -DSNAKE_HEADLESS -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
 
       - name: Run the snake suite
         run: ./snake-tests
@@ -47,8 +47,8 @@ jobs:
       # machine and the render path execute - not that raylib draws.
       - name: Run both games headless for 120 frames
         run: |
-          cc -std=c11 -O2 -Wno-unused-function -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
-          cc -std=c11 -O2 -Wno-unused-function -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
+          cc -std=c11 -O2 -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
+          cc -std=c11 -O2 -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
           for game in gk snake; do
             out=$(GK_FRAMES=120 ./$game-linkcheck)
             printf '%-6s %s\n' "$game" "$out"

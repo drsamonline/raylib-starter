@@ -6,7 +6,16 @@
  * neither needs an engine.
  */
 #include "main.c"
-__attribute__((export_name("gk_smoke")))
+
+/* export_name is a wasm attribute; the other five targets would warn about it,
+   and this file is their probe too. */
+#if defined(__wasm__)
+#define GK_EXPORT(name) __attribute__((export_name(name)))
+#else
+#define GK_EXPORT(name)
+#endif
+
+GK_EXPORT("gk_smoke")
 int gk_smoke(int ticks) {
     gk_loop l;
     gk_loop_init(&l, 1.0 / 60.0);
