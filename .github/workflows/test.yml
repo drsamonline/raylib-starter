@@ -1,8 +1,8 @@
 name: Test
 
 # Nothing here needs an engine, a window or a display: both games compile with
-# GK_NO_MAIN against the stub, so CI runs the real game loops headless. The wasm
-# job additionally proves the core is portable and keeps it small.
+# GK_NO_MAIN against the stub, so CI runs the real game loops headless. The last
+# steps build the core as wasm32 and gate its size.
 
 on:
   push:
@@ -13,46 +13,44 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+
       - name: Build the demo game's suite
         run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
-      - name: Run it
+
+      - name: Run the demo game's suite
         run: ./gk-tests
+
       - name: Build the snake suite
         run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
-      - name: Run it
+
+      - name: Run the snake suite
         run: ./snake-tests
 
-  wasm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
       - name: Install a C compiler that targets wasm32
         run: pip install ziglang
+
       - name: Build the core as wasm32
         run: |
           ZIG=$(python3 -c "import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),'zig'))")
           "$ZIG" cc -target wasm32-wasi-musl -std=c11 -Os -DGK_NO_MAIN -I. -Istub \
             -Wl,--no-entry -Wl,--export=gk_smoke -o gk-core.wasm web/wasm_smoke.c -lm
           wc -c < gk-core.wasm
+
       # The core was 1,351 bytes when this gate was written. 64 KB is far above
       # that and far below the 10 MB ceiling: it catches a libc accidentally
       # retained or a dependency creeping in, not ordinary growth.
-      - name: Gate the size
+      - name: Gate the wasm size
         run: |
           bytes=$(wc -c < gk-core.wasm | tr -d ' ')
           printf 'wasm core is %s bytes\n' "$bytes"
           if [ "$bytes" -gt 65536 ]; then
-            printf 'FAIL: over the 64 KB wasm gate\n'; exit 1
+            printf 'FAIL: over the 64 KB wasm gate\n'
+            exit 1
           fi
           printf 'OK: under the 64 KB wasm gate\n'
