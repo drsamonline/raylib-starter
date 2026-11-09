@@ -53,6 +53,8 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `make snake` | raylib + a C compiler | `snake`, the second game |
 | `make test-snake` | a C compiler | 35 assertions for the second game |
 | `make bench` | a C compiler | the ECS benchmark, at a 4096 entity cap |
+| `make cross CC="zig cc"` | a cross-capable compiler | the core compiled for five other machines |
+| `ndk-build` in `android/` | Android NDK + raylib for Android | the game on Android |
 
 The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
 all. That is what makes it testable, and it is why the stub exists.
@@ -126,6 +128,26 @@ Being precise, because "it builds" is easy to overclaim:
   prove the core adapts, and the default is 256.
 - **The Emscripten build was not run here** — emsdk is not installable in the environment this
   was written in. `make web` and `web/shell.html` are the pieces to run with emsdk present.
+
+## Portability, measured
+
+The core has no engine in it, so it cross-compiles anywhere a C compiler runs. `make cross` does
+this on every push:
+
+| Target | Core object | Verified |
+| --- | --- | --- |
+| `aarch64-linux-musl` | 4,024 B | ✅ |
+| `arm-linux-musleabihf` | 2,964 B | ✅ |
+| `riscv64-linux-musl` | 4,736 B | ✅ |
+| `x86_64-windows-gnu` | 9,986 B | ✅ |
+| `aarch64-macos` | 3,048 B | ✅ |
+| `wasm32-wasi-musl` | 1,351 B | ✅ |
+| `*-linux-android` | — | ❌ needs bionic headers, i.e. the NDK |
+
+Android is scaffolded in `android/` (`ndk-build`, two `.mk` files, a manifest note) and is
+honestly marked as unbuilt here. ARM is what Android devices run, so the instruction selection
+and float behaviour are already exercised by the two ARM rows; what is untested is bionic and
+raylib's Android glue.
 
 ## Why not archetype storage
 

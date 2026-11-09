@@ -1,7 +1,9 @@
-/* web/wasm_smoke.c - the core, linked for wasm32 with no engine at all.
+/* web/wasm_smoke.c - the core with an exported entry, so a cross-compile keeps
+ * the core in the object instead of dropping it as unreachable.
  *
- * `make wasm-core` builds this and reports the size: it is the proof that the
- * core is portable, independent of whether the full raylib web build works.
+ * `make wasm-core` links it for wasm32 and reports the size; `make cross`
+ * compiles it for five other machines. Both are the portability proof, and
+ * neither needs an engine.
  */
 #include "main.c"
 __attribute__((export_name("gk_smoke")))

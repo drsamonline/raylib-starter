@@ -42,6 +42,18 @@ jobs:
             -Wl,--no-entry -Wl,--export=gk_smoke -o gk-core.wasm web/wasm_smoke.c -lm
           wc -c < gk-core.wasm
 
+      - name: Cross-compile the core for other machines
+        run: |
+          ZIG=$(python3 -c "import ziglang,os;print(os.path.join(os.path.dirname(ziglang.__file__),'zig'))")
+          for t in aarch64-linux-musl arm-linux-musleabihf riscv64-linux-musl x86_64-windows-gnu aarch64-macos; do
+            printf '%-24s ' "$t"
+            if "$ZIG" cc -target "$t" -std=c11 -O2 -DGK_NO_MAIN -I. -Istub -c web/wasm_smoke.c -o "/tmp/gk-$t.o"; then
+              printf 'OK  %s bytes\n' "$(wc -c < "/tmp/gk-$t.o")"
+            else
+              printf 'FAIL\n'; exit 1
+            fi
+          done
+
       # The core was 1,351 bytes when this gate was written. 64 KB is far above
       # that and far below the 10 MB ceiling: it catches a libc accidentally
       # retained or a dependency creeping in, not ordinary growth.

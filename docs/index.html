@@ -75,6 +75,20 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
     </tbody>
   </table>
 
+  <h2>Portability, measured</h2>
+  <table>
+    <thead><tr><th>target</th><th>core object</th><th>verified</th></tr></thead>
+    <tbody>
+      <tr><td><code>aarch64-linux-musl</code></td><td>4,024 B</td><td>yes</td></tr>
+      <tr><td><code>arm-linux-musleabihf</code></td><td>2,964 B</td><td>yes</td></tr>
+      <tr><td><code>riscv64-linux-musl</code></td><td>4,736 B</td><td>yes</td></tr>
+      <tr><td><code>x86_64-windows-gnu</code></td><td>9,986 B</td><td>yes</td></tr>
+      <tr><td><code>aarch64-macos</code></td><td>3,048 B</td><td>yes</td></tr>
+      <tr><td><code>wasm32-wasi-musl</code></td><td>1,351 B</td><td>yes</td></tr>
+      <tr><td><code>*-linux-android</code></td><td>—</td><td>no — needs the NDK</td></tr>
+    </tbody>
+  </table>
+
   <h2>Why not archetype storage</h2>
   <p class="mut">Measured with <code>make bench</code>. The ratio is real; the absolute numbers are
   not — at 256 entities a system run is 2.1 µs against 0.12 µs in a 16.6 ms frame.</p>

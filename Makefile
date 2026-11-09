@@ -26,7 +26,7 @@ MAX_BYTES := 10485760
 EMCC ?= emcc
 RAYLIB_SRC ?= ../raylib
 
-.PHONY: all test size snake test-snake web wasm-core bench clean
+.PHONY: all test size snake test-snake web wasm-core bench cross clean
 
 all: $(BIN)
 
@@ -53,6 +53,20 @@ test-snake: $(SNAKE_TEST_BIN)
 $(SNAKE_TEST_BIN): examples/snake.c tests/test_snake.c stub/raylib.h stub/raylib_stub.c
 	$(CC) $(CFLAGS) -Wno-unused-function -DGK_NO_MAIN -I. -Istub \
 		-o $@ examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+
+# Cross-compile the core for other machines. Needs a compiler that can target
+# them (zig cc can, for all of these) - no NDK, no SDK, no sysroot.
+CROSS_TARGETS := aarch64-linux-musl arm-linux-musleabihf riscv64-linux-musl x86_64-windows-gnu aarch64-macos
+
+cross: web/wasm_smoke.c main.c
+	@for t in $(CROSS_TARGETS); do \
+		printf '%-24s ' "$$t"; \
+		if $(CC) -target $$t -std=c11 -O2 -DGK_NO_MAIN -I. -Istub -c web/wasm_smoke.c -o /tmp/gk-$$t.o 2>/tmp/gk-cross.err; then \
+			printf 'OK  %s bytes\n' "$$(wc -c < /tmp/gk-$$t.o)"; \
+		else \
+			printf 'FAIL\n'; head -3 /tmp/gk-cross.err; exit 1; \
+		fi; \
+	done
 
 # The ECS benchmark: scan-and-mask against archetype storage. Built with a raised
 # entity cap so the larger sizes can be measured too.
