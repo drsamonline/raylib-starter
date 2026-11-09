@@ -1,0 +1,104 @@
+# raylib-starter
+
+[![test](https://github.com/drsamonline/raylib-starter/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/raylib-starter/actions/workflows/test.yml)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+
+**One C file, a fixed timestep, scenes, save and an ECS — on raylib.** The C answer to
+`game-kit`: the same names, the same behaviour, and the same tests, on a 2.4 MB engine instead
+of a browser.
+
+Built for the 10 MB ceiling. A raylib game is one binary that runs on Windows, macOS, Linux,
+the web (via Emscripten), Android and a Raspberry Pi.
+
+## Use it
+
+```bash
+make            # the game        (needs raylib)
+make test       # the suite       (needs only a C compiler)
+make size       # fail if over 10 MB
+```
+
+```c
+gk_loop_init(&G.loop, 1.0 / 60.0);
+gk_loop_tick(&G.loop, GetFrameTime(), loop_step, loop_draw, &G);   // fixed steps, then draw
+
+gk_scenes_go(&G.scenes, "play", &G, NULL);                          // enter / exit / update / render
+gk_save("progress.bin", &p, sizeof p);                              // magic + version + CRC32
+gk_rng_seed(&G.rng, 12345);                                         // the same sequence as game-kit
+```
+
+## What is in it
+
+| | |
+| --- | --- |
+| `gk_loop` | a fixed timestep: accumulator, a 0.25 s frame clamp, a 240-step cap, and an alpha for interpolation |
+| `gk_scenes` | named scenes with `enter` / `exit` / `update` / `render`; an unknown name is refused rather than blanking the screen |
+| `gk_input` | key down and pressed-this-frame, driven by the host — no engine types in the core |
+| `gk_save` / `gk_load` | a struct on disk with a magic, a version and a CRC32, so a half-written save is caught, not loaded |
+| `gk_ecs` | entities, component bags and systems over a bitmask; fixed capacity, no allocation |
+| `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
+| `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
+
+The core is engine-free: `main.c` compiles with `-DGK_NO_MAIN` and then contains no raylib at
+all. That is what makes it testable, and it is why the stub exists.
+
+## The demo game
+
+`main.c` is also a small game, so nothing here is a sketch: three scenes (title, play, over), a
+player and six drifting motes that are all entities in the ECS, collection by AABB, a 30-second
+round, and a best score saved to disk. It exercises every part of the core, which is why the
+tests can drive the real game headless.
+
+## Verified
+
+```
+make test
+99 passed, 0 failed
+```
+
+What the suite covers, all headless — no engine, no window, no display:
+
+- **the loop**: 60 steps from 60 frames, a 1 s frame clamped to 15 steps, a 0.25 s frame × 4
+  giving 60 steps, the step cap holding and resetting the accumulator, alpha in `[0,1)`
+- **the RNG**: five values from seed 12345 compared against `game-kit`'s JavaScript output to
+  1e-12, seed 1 likewise, `rng_int` inside its bounds and reaching both ends, `rng_pick` in range
+- **scenes**: enter before exit ordering, routing of update and render, an unknown scene refused
+- **save**: round-trip, a size mismatch, a foreign magic, a future version, one corrupted payload
+  byte caught by the CRC, and an empty payload
+- **ECS**: create/get/has/remove/destroy, systems matching only the entities that hold the
+  components they name, systems in the order added, a full world refusing more entities
+- **the game itself**: start goes to play, seven entities spawn, the clock advances, the player
+  stays on the field, walking into a mote scores, the round ends on the clock, the best is kept
+
+### What was and was not verified here
+
+Being precise, because "it builds" is easy to overclaim:
+
+- **The suite was compiled and run** with `zig cc` (Zig 0.17.1's bundled clang), the only C
+  compiler available in the environment this was written in. 99 assertions, all passing.
+- **The raylib-facing half compiles**: `main.c` with `main()`, the three render functions and the
+  key mapping compiles against `stub/raylib.h`, which mirrors raylib 5.x signatures. That catches
+  a wrong call, not a wrong engine.
+- **The real raylib link was not performed here.** raylib needs X11 and GL headers that this
+  environment does not have, so `make` and `make size` are the two things to run on your machine.
+  `make` itself is not installed here either; the commands those targets wrap were run directly.
+- **Size, measured here**: `main.c` compiles to a **57,064-byte** object at `-O2`, and the whole
+  game plus stub plus tests links to **24,040 bytes** stripped. The real binary is that object
+  plus raylib's static library, which is about 1 MB. `make size` fails the build above 10 MB.
+
+## The stub
+
+`stub/raylib.h` and `stub/raylib_stub.c` are the slice of raylib this starter uses: a virtual
+clock, a scripted keyboard, and drawing that counts calls instead of drawing. Signatures match
+raylib, so the same source compiles both ways, and adding a raylib call means adding it to the
+stub too — the stub is the contract.
+
+## Consumers
+
+None yet — this is the first C kit in the fleet, written to be the starting point for the small
+games. It is not wired into anything and changes no app.
+
+## Licence
+
+PolyForm Noncommercial 1.0.0. (c) 2026 Dr Sohil Momin. Part of the Forge system — kits open,
+orchestrator licensed. raylib itself is zlib licensed and is not vendored here.

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="color-scheme" content="dark light"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>raylib-starter — one C file, fixed timestep, scenes, save, ECS</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--ink:#e7e9ee;--mut:#9aa3b2;--line:#252a34;--acc:#22c55e;--code:#1d222b}
+:root[data-theme="light"]{color-scheme:light;--bg:#f6f7f9;--card:#fff;--ink:#0f1115;--mut:#4b5563;--line:#dfe3e8;--acc:#15803d;--code:#f1f3f6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header,main,footer{max-width:880px;margin:0 auto;padding:24px 20px}
+h1{margin:0 0 6px;font-size:24px}h2{margin:32px 0 10px;font-size:17px}
+.mut{color:var(--mut)}
+.theme-btn{float:right;width:30px;height:30px;margin:2px 0 0 10px;padding:0;background:transparent;color:inherit;
+  border:1px solid var(--line);border-radius:50%;cursor:pointer;opacity:.8}
+.theme-btn:hover{opacity:1}.theme-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+pre{background:var(--code);border-radius:10px;padding:14px;overflow:auto;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600}
+code{background:rgba(127,127,127,.14);padding:1px 5px;border-radius:4px;font-size:12.5px}
+.big{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:16px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card b{display:block;font-size:22px;color:var(--acc)}
+.card span{font-size:12px;color:var(--mut)}
+.note{border-left:4px solid var(--acc);background:var(--code);padding:10px 14px;border-radius:8px;font-size:14px;margin:14px 0}
+</style></head><body>
+<header>
+  <button class="theme-btn" id="theme" title="Switch theme" aria-label="Switch theme">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+  </button>
+  <h1>raylib-starter</h1>
+  <p class="mut">One C file on raylib: a fixed timestep, scenes, a CRC-checked save, and an ECS.
+  Built for the 10 MB ceiling — the C answer to <code>game-kit</code>.</p>
+</header>
+
+<main>
+  <div class="big">
+    <div class="card"><b>99</b><span>assertions, all passing</span></div>
+    <div class="card"><b>57 KB</b><span>the game's own code, -O2 object</span></div>
+    <div class="card"><b>10 MB</b><span>the ceiling <code>make size</code> enforces</span></div>
+    <div class="card"><b>0</b><span>engine calls in the core</span></div>
+  </div>
+
+  <h2>Build it</h2>
+  <pre>make          # the game        (needs raylib)
+make test     # the suite       (needs only a C compiler)
+make size     # fail if over 10 MB</pre>
+
+  <h2>What is in the core</h2>
+  <table>
+    <thead><tr><th>piece</th><th>what it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>gk_loop</code></td><td>accumulator, a 0.25 s frame clamp, a 240-step cap, alpha out for interpolation</td></tr>
+      <tr><td><code>gk_scenes</code></td><td>named scenes with enter / exit / update / render; an unknown name is refused</td></tr>
+      <tr><td><code>gk_input</code></td><td>down and pressed-this-frame, driven by the host — no engine types in the core</td></tr>
+      <tr><td><code>gk_save</code></td><td>magic + version + CRC32, so a half-written save is caught rather than loaded</td></tr>
+      <tr><td><code>gk_ecs</code></td><td>entities, component bags and systems over a bitmask, fixed capacity, no malloc</td></tr>
+      <tr><td><code>gk_rng</code></td><td>mulberry32 — the same sequence as game-kit's <code>rng()</code>, verified to 1e-12</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Why it tests without an engine</h2>
+  <p class="mut">The core has no raylib in it. <code>main.c</code> compiles with
+  <code>-DGK_NO_MAIN</code> and then contains no engine at all, so the suite drives the real game
+  loop, the real scene machine and the real ECS headless — no window, no display, no GPU. The
+  stub in <code>stub/</code> mirrors raylib 5.x signatures, so the same source builds both ways.</p>
+
+  <div class="note">
+    <strong>What was not verified where this was written:</strong> the real raylib link. raylib
+    needs X11 and GL headers, so <code>make</code> and <code>make size</code> are the two things
+    to run on a machine with raylib installed. The suite and the raylib-facing half were both
+    compiled; the engine was not linked.
+  </div>
+
+  <h2>The demo game</h2>
+  <p class="mut">Three scenes — title, play, over — with a player and six drifting motes, all
+  entities in the ECS. Collection is an AABB test, the round is 30 seconds, and the best score is
+  saved to disk. Every part of the core is exercised by the game, which is why the tests can
+  assert on the game rather than on toy inputs.</p>
+</main>
+
+<footer class="mut" style="font-size:13px">
+  <p>PolyForm Noncommercial 1.0.0. (c) 2026 Dr Sohil Momin. raylib is zlib licensed and is not vendored here.</p>
+</footer>
+
+<script>
+(function () {
+  var key = "raylib-starter-theme";
+  function apply(t) { document.documentElement.setAttribute("data-theme", t); }
+  var saved = null; try { saved = localStorage.getItem(key); } catch (e) {}
+  var system = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  apply(saved || system);
+  document.getElementById("theme").addEventListener("click", function () {
+    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    apply(next); try { localStorage.setItem(key, next); } catch (e) {}
+  });
+})();
+</script>
+</body></html>

@@ -1,0 +1,28 @@
+name: Test
+
+# The suite needs no engine, no window and no display: main.c compiles with
+# GK_NO_MAIN against the stub, so CI runs the real game loop headless.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
+      - name: Build the suite
+        run: cc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
+      - name: Run it
+        run: ./gk-tests
