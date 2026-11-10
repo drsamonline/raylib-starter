@@ -802,27 +802,33 @@ typedef struct gk_scene {
     void (*render)(void *ud, double alpha);
 } gk_scene;
 
+/* The registry OWNS its scenes: gk_scenes_add copies the struct in. Holding the
+   caller's pointer meant `&(gk_scene){ ... }` - a compound literal with block
+   scope - dangled the moment the registering function returned. The second game
+   found that with a segfault; the type now makes it impossible. */
 typedef struct {
-    const gk_scene *list[GK_MAX_SCENES];
+    gk_scene list[GK_MAX_SCENES];
     int count;
-    const gk_scene *current;
+    int current;          /* index into list, -1 before the first go */
     const char *current_name;
 } gk_scenes;
 
 GK_API static void gk_scenes_init(gk_scenes *s) {
     memset(s, 0, sizeof *s);
+    s->current = -1;
 }
 
 GK_API static int gk_scenes_add(gk_scenes *s, const gk_scene *scene) {
     if (!scene || s->count >= GK_MAX_SCENES) return -1;
-    s->list[s->count++] = scene;
+    s->list[s->count] = *scene;      /* copied, not referenced */
+    s->count++;
     return 0;
 }
 
 GK_API static const gk_scene *gk_scenes_find(const gk_scenes *s, const char *name) {
     if (!name) return NULL;
     for (int i = 0; i < s->count; i++) {
-        if (s->list[i]->name && strcmp(s->list[i]->name, name) == 0) return s->list[i];
+        if (s->list[i].name && strcmp(s->list[i].name, name) == 0) return &s->list[i];
     }
     return NULL;
 }
@@ -832,18 +838,28 @@ GK_API static const gk_scene *gk_scenes_find(const gk_scenes *s, const char *nam
 GK_API static int gk_scenes_go(gk_scenes *s, const char *name, void *ud, const void *data) {
     const gk_scene *next = gk_scenes_find(s, name);
     if (!next) return -1;
-    if (s->current && s->current->exit) s->current->exit(ud);
-    s->current = next;
-    s->current_name = next->name;
-    if (next->enter) next->enter(ud, data);
+    if (s->current >= 0 && s->list[s->current].exit) s->list[s->current].exit(ud);
+    s->current = (int)(next - s->list);
+    s->current_name = s->list[s->current].name;
+    if (s->list[s->current].enter) s->list[s->current].enter(ud, data);
     return 0;
 }
 
+/* Attach or replace a scene's render callback after it was registered. A headless
+   build registers the scenes with no renderer at all; the real build adds them. */
+GK_API static int gk_scenes_set_render(gk_scenes *s, const char *name, gk_draw_fn render) {
+    if (!s || !name) return -1;
+    for (int i = 0; i < s->count; i++) {
+        if (gk_str_eq(s->list[i].name, name)) { s->list[i].render = render; return 0; }
+    }
+    return -1;
+}
+
 GK_API static void gk_scenes_update(gk_scenes *s, void *ud, double step) {
-    if (s->current && s->current->update) s->current->update(ud, step);
+    if (s->current >= 0 && s->list[s->current].update) s->list[s->current].update(ud, step);
 }
 GK_API static void gk_scenes_render(gk_scenes *s, void *ud, double alpha) {
-    if (s->current && s->current->render) s->current->render(ud, alpha);
+    if (s->current >= 0 && s->list[s->current].render) s->list[s->current].render(ud, alpha);
 }
 GK_API static const char *gk_scenes_current(const gk_scenes *s) { return s->current_name; }
 

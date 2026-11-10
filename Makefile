@@ -20,6 +20,8 @@ TEST_BIN := gk-tests
 SNAKE_BIN := snake
 SNAKE_TEST_BIN := snake-tests
 AUDIO_TEST_BIN := audio-tests
+HARVEST_BIN := harvest
+HARVEST_TEST_BIN := harvest-tests
 MAX_BYTES := 10485760
 
 # Web: the full game needs Emscripten and a raylib built for wasm; the core
@@ -27,7 +29,7 @@ MAX_BYTES := 10485760
 EMCC ?= emcc
 RAYLIB_SRC ?= ../raylib
 
-.PHONY: all test size size-real snake test-snake test-audio link-check web wasm-core bench cross clean
+.PHONY: all test size size-real snake test-snake test-audio harvest test-harvest link-check web wasm-core bench cross clean
 
 all: $(BIN)
 
@@ -36,10 +38,22 @@ $(BIN): main.c
 
 # The suite compiles main.c with GK_NO_MAIN, so the core and the game run with
 # no window at all. because the headless build has no main.
-test: $(TEST_BIN) $(SNAKE_TEST_BIN) $(AUDIO_TEST_BIN)
+test: $(TEST_BIN) $(SNAKE_TEST_BIN) $(AUDIO_TEST_BIN) $(HARVEST_TEST_BIN)
 	./$(TEST_BIN)
 	./$(SNAKE_TEST_BIN)
 	./$(AUDIO_TEST_BIN)
+	./$(HARVEST_TEST_BIN)
+
+# The second game: the whole stack in one place. Its suite is the integration test
+# a per-feature suite cannot be.
+harvest: examples/harvest.c main.c
+	$(CC) $(CFLAGS) -I. -o $(HARVEST_BIN) examples/harvest.c $(RL_LIBS)
+
+test-harvest: $(HARVEST_TEST_BIN)
+	./$(HARVEST_TEST_BIN)
+
+$(HARVEST_TEST_BIN): examples/harvest.c tests/test_harvest.c main.c stub/raylib.h stub/raylib_stub.c
+	$(CC) $(CFLAGS) -DHARVEST_HEADLESS -I. -Istub -o $@ tests/test_harvest.c stub/raylib_stub.c -lm
 
 # The audio wrapper needs the engine's types, so it has its own translation unit
 # with GK_AUDIO_TEST: the core stays engine-free, and the routing is still checked.
@@ -151,6 +165,6 @@ wasm-core: web/wasm_smoke.c main.c
 	@printf 'web/gk-core.wasm is %s bytes\n' "$$(wc -c < web/gk-core.wasm)"
 
 clean:
-	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) $(AUDIO_TEST_BIN) ecs-bench gk-linkcheck snake-linkcheck gk-real \
+	rm -f $(BIN) $(TEST_BIN) $(SNAKE_BIN) $(SNAKE_TEST_BIN) $(AUDIO_TEST_BIN) $(HARVEST_BIN) $(HARVEST_TEST_BIN) ecs-bench gk-linkcheck snake-linkcheck gk-real \
 		gk-progress.bin test-progress.bin snake-best.bin \
 		web/gk.html web/gk.js web/gk.wasm web/gk-core.wasm

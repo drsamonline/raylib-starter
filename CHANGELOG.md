@@ -1,6 +1,15 @@
 # Changelog
 ## 1.0.0 — 2026-11-10
 ### Added
+- `examples/harvest.c`: a second game on the whole stack, with its own 43-assertion suite. It is
+  the integration test the per-feature suites cannot be
+- `gk_scenes_set_render`, so a headless build registers scenes with no renderer and the real build
+  attaches one
+
+### Fixed
+- `gk_scenes_add` kept the caller's pointer, so a compound-literal scene dangled as soon as the
+  registering function returned. The registry now copies the scene and tracks it by index. Found by
+  the second game as a segfault, not by any suite
 - `gk_tiles_visible` takes a frame map, so each visible tile carries the atlas frame for its id
   and a renderer gets a source rect and a destination rect from one walk
 - the demo's round is driven by a `gk_machine`: warmup → live → finished, with the scene drawing

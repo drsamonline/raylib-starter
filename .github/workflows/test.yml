@@ -40,6 +40,12 @@ jobs:
 
       # A README number is a claim. This rebuilds the three suites and fails when
       # one of them disagrees with what the README states.
+      - name: Build the harvest suite
+        run: cc -std=c11 -O2 -Wall -Wextra -Werror -DHARVEST_HEADLESS -I. -Istub -o harvest-tests tests/test_harvest.c stub/raylib_stub.c -lm
+
+      - name: Run the harvest suite
+        run: ./harvest-tests
+
       - name: Check the README's claims
         run: sh tools/check-claims.sh
 

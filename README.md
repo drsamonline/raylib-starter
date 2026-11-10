@@ -55,7 +55,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | target | needs | gives |
 | --- | --- | --- |
 | `make` | raylib + a C compiler | `gk`, the desktop game |
-| `make test` | a C compiler | three suites, 389 assertions, headless, no display |
+| `make test` | a C compiler | four suites, 432 assertions, headless, no display |
 | `make size` | raylib | builds, then fails above 10 MB |
 | `make web` | emsdk + raylib built for wasm | `web/gk.html` + `.js` + `.wasm` |
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
@@ -100,6 +100,7 @@ tests can drive the real game headless.
 ```
 make test
 326 passed, 0 failed    (the demo game)
+43 passed, 0 failed     (harvest)
 28 passed, 0 failed     (audio)
 35 passed, 0 failed     (snake)
 ```

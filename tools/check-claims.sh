@@ -28,9 +28,11 @@ run_suite() {   # name, readme-pattern, build command...
     echo "OK: $name — $got assertions"
 }
 
-run_suite demo  '[0-9]+ passed, 0 failed    \(the demo game\)' \
+run_suite demo  '[0-9]+ passed, 0 failed *\(the demo game\)' \
     $CC $CFLAGS -Wno-unused-function -DGK_NO_MAIN -I. -Istub -o "$tmp/demo" main.c stub/raylib_stub.c tests/test_gk.c -lm
-run_suite snake '[0-9]+ passed, 0 failed     \(snake\)' \
+run_suite snake '[0-9]+ passed, 0 failed *\(snake\)' \
     $CC $CFLAGS -Wno-unused-function -DSNAKE_HEADLESS -I. -Istub -o "$tmp/snake" examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
-run_suite audio '[0-9]+ passed, 0 failed     \(audio\)' \
+run_suite audio '[0-9]+ passed, 0 failed *\(audio\)' \
     $CC $CFLAGS -Wno-unused-function -I. -Istub -o "$tmp/audio" tests/test_audio.c stub/raylib_stub.c -lm
+run_suite harvest '[0-9]+ passed, 0 failed *\(harvest\)' \
+    $CC $CFLAGS -Wno-unused-function -DHARVEST_HEADLESS -I. -Istub -o "$tmp/harvest" tests/test_harvest.c stub/raylib_stub.c -lm
