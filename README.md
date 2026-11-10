@@ -40,7 +40,8 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_ecs` | entities, component bags and systems over a bitmask; systems are handed the entity, so component access is O(1); `gk_ecs_queue_destroy` + `gk_ecs_flush` defer structural change out of a pass; fixed capacity, no allocation |
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
-| `gk_camera` | world↔screen, follow with easing, zoom, and bounds that keep the view inside the level |
+| `gk_camera` | world↔screen, follow with easing, zoom, deadzone, and bounds that keep the view inside the level |
+| `gk_shake` | a camera kick as an elapsed-time effect: `make`/`start`/`step`/`running`, decaying to zero |
 | `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
 | `gk_atlas` / `gk_anim` / `gk_sprite_dst` | frame rectangles from a grid atlas, which frame is showing at time t, and where a world sprite lands on screen |
 | `gk_tiles_visible` | the tiles a camera can see, as world rectangles — a renderer walks the list, a test counts it |
@@ -95,7 +96,7 @@ tests can drive the real game headless.
 
 ```
 make test
-252 passed, 0 failed    (the demo game)
+266 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
@@ -126,6 +127,7 @@ What the suite covers, all headless — no engine, no window, no display:
 - **visible tiles**: a view covering the map sees all 15, a 32×16 view sees exactly 3, a view
   outside the map sees none, the capacity is respected, a null camera means the whole map, a null
   map means none, and zooming out shows more
+- **camera shake**: start/step/running, offset within the amplitude, decay towards the end, stops exactly at the duration and clears the offset, a finished shake is inert, a negative step does not rewind, zero duration never runs, restart resets, null-safe
 - **the camera**: world↔screen round-trips at zoom 1 and 2, the camera's own point lands at the
   viewport centre, follow closes the gap and arrives, speed 1 snaps and speed 0 does not move,
   bounds stop at half a viewport, zoomed in the view may travel further, a world smaller than the

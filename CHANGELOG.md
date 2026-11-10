@@ -1,6 +1,8 @@
 # Changelog
 ## 1.0.0 — 2026-11-10
 ### Added
+- `gk_shake`, a camera effect in the elapsed-time shape: `make`/`start`/`step`/`running`, decaying offset, wired to each collect in the demo
+- `gk_ecs_queue_destroy` + `gk_ecs_flush` (deferred removal)
 - `gk_tween_t`, a tween with state (`make`/`step`/`value`/`retarget`), and `gk_camera_deadzone`, which holds the camera still for small steps
 - `gk_atlas`/`gk_anim`/`gk_sprite_dst` and `gk_tiles_visible`: frame rectangles, animation frames, and the tiles a camera can see
 - `gk_ecs_queue_destroy` + `gk_ecs_flush`, so a loop can destroy what it is iterating
@@ -15,7 +17,7 @@
 - Android `ndk-build` scaffolding, marked unbuilt
 
 ### Verified
-- 252 assertions in the demo suite, 35 in snake, all passing under gcc and zig cc
+- 266 assertions in the demo suite, 35 in snake, all passing under gcc and zig cc
 - both games run 120 frames headless past the title scene (2551 and 712 draw calls), driven by a scripted autoplay so the play renderer executes
 - real binary: 931,272 bytes stripped against raylib 6.2 - 11x under the ceiling
 - warning-free under `-Wall -Wextra -Werror` in eight configurations

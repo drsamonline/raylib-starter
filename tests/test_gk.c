@@ -634,6 +634,69 @@ static void test_deferred(void) {
     OK("an empty flush changes nothing", gk_ecs_flush(&w5) == 0 && gk_ecs_count(&w5) == 1);
 }
 
+
+/* ---------- camera shake ---------- */
+static void test_shake(void) {
+    gk_shake s = gk_shake_make(300, 6, 8);
+    OK("a new shake is not running", gk_shake_running(&s) == 0);
+    OK("a new shake has no offset", s.dx == 0 && s.dy == 0);
+
+    gk_shake_start(&s);
+    OK("starting it makes it run", gk_shake_running(&s) == 1);
+
+    gk_shake_step(&s, 16);
+    OKD("it produces an offset", s.dx != 0 || s.dy != 0, "%.3f,%.3f", s.dx, s.dy);
+    OKD("the offset stays within the amplitude", fabs(s.dx) <= 6.001 && fabs(s.dy) <= 6.001,
+        "%.3f,%.3f", s.dx, s.dy);
+
+    /* the offset decays: the peak early is larger than the peak late */
+    gk_shake a = gk_shake_make(300, 6, 8);
+    gk_shake_start(&a);
+    double early = 0;
+    for (int i = 0; i < 5; i++) { gk_shake_step(&a, 16); if (fabs(a.dx) > early) early = fabs(a.dx); }
+    double late = 0;
+    for (int i = 0; i < 15; i++) { gk_shake_step(&a, 16); if (fabs(a.dx) > late) late = fabs(a.dx); }
+    OKD("it decays towards the end", late < early, "early %.3f late %.3f", early, late);
+
+    /* it ends exactly on time and clears the offset */
+    gk_shake e = gk_shake_make(100, 5, 8);
+    gk_shake_start(&e);
+    gk_shake_step(&e, 99);
+    OK("it is still running just before the end", gk_shake_running(&e) == 1);
+    gk_shake_step(&e, 1);
+    OK("it stops at the duration", gk_shake_running(&e) == 0);
+    OK("and the offset is cleared", e.dx == 0 && e.dy == 0);
+
+    /* stepping a finished shake does nothing */
+    gk_shake_step(&e, 1000);
+    OK("stepping a finished shake is a no-op", e.dx == 0 && e.dy == 0);
+
+    /* a negative step is ignored */
+    gk_shake n = gk_shake_make(200, 4, 8);
+    gk_shake_start(&n);
+    gk_shake_step(&n, 50);
+    double before = n.t;
+    gk_shake_step(&n, -100);
+    OKD("a negative step does not rewind", n.t == before, "%.1f", n.t);
+
+    /* zero duration never runs */
+    gk_shake z = gk_shake_make(0, 5, 8);
+    gk_shake_start(&z);
+    OK("a zero-duration shake never runs", gk_shake_running(&z) == 0);
+
+    /* restarting resets the clock */
+    gk_shake r = gk_shake_make(200, 4, 8);
+    gk_shake_start(&r);
+    gk_shake_step(&r, 150);
+    gk_shake_start(&r);
+    OKD("restarting resets the clock", r.t == 0 && gk_shake_running(&r) == 1, "%.1f", r.t);
+
+    /* null safety */
+    gk_shake_step(NULL, 10);
+    gk_shake_start(NULL);
+    OK("null shake calls are safe", gk_shake_running(NULL) == 0);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -951,6 +1014,7 @@ int main(void) {
     test_deadzone();
     test_tilemap();
     test_deferred();
+    test_shake();
     test_sprites();
     test_rng();
     test_loop();

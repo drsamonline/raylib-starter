@@ -286,6 +286,40 @@ GK_API static void gk_camera_deadzone(gk_camera *c, double tx, double ty, double
     else if (ty > c->y + hh) c->y = ty - hh;
 }
 
+/* A shake: an elapsed-time effect, not a flag. Start it, step it, read the offset.
+   The offset decays over the duration, so it settles instead of stopping dead. */
+typedef struct {
+    double dur;      /* ms */
+    double t;
+    double amp;      /* pixels at full strength */
+    double freq;     /* wobbles per second */
+    int running;
+    double dx, dy;
+} gk_shake;
+
+GK_API static gk_shake gk_shake_make(double dur_ms, double amp, double freq) {
+    gk_shake s = { dur_ms, 0, amp, freq > 0 ? freq : 8.0, 0, 0, 0 };
+    return s;
+}
+
+GK_API static void gk_shake_start(gk_shake *s) {
+    if (!s) return;
+    s->t = 0;
+    s->running = s->dur > 0;
+}
+
+GK_API static void gk_shake_step(gk_shake *s, double dt_ms) {
+    if (!s || !s->running) return;
+    s->t += dt_ms > 0 ? dt_ms : 0;
+    if (s->t >= s->dur) { s->t = s->dur; s->running = 0; s->dx = 0; s->dy = 0; return; }
+    double k = 1.0 - s->t / s->dur;                 /* decays to zero */
+    double phase = (s->t / 1000.0) * s->freq * 6.283185307179586;
+    s->dx = cos(phase) * s->amp * k;
+    s->dy = sin(phase * 1.7) * s->amp * k;          /* a different rate on each axis */
+}
+
+GK_API static int gk_shake_running(const gk_shake *s) { return s ? s->running : 0; }
+
 /* Keep the whole viewport inside the world. When the world is smaller than the
    viewport there is nothing to keep, so the camera centres on it instead. */
 GK_API static void gk_camera_clamp(gk_camera *c) {
@@ -886,6 +920,7 @@ typedef struct {
     float px, py;            /* the player */
     int score, best, left;   /* left = motes still to collect */
     gk_tween_t pulse;        /* 1 -> 0 over 300ms when a mote is collected */
+    gk_shake shake;          /* a small camera kick on each collect */
     gk_camera cam;           /* follows the player over a world bigger than the window */
     gk_tilemap map;          /* a solid border, so the player collides instead of bouncing */
     gk_anim mote_anim;       /* the motes pulse through four frames */
@@ -945,6 +980,7 @@ GK_API static void play_enter(void *ud, const void *data) {
     G.px = 320;
     G.py = 200;
     G.pulse = gk_tween_make(0, 0, 300, gk_ease_named("out"));
+    G.shake = gk_shake_make(180, 4, 12);
     G.cam = gk_camera_make(640, 400);
     gk_camera_bounds(&G.cam, 0, 0, GK_WORLD_W, GK_WORLD_H);
     G.cam.x = G.px;
@@ -1012,6 +1048,7 @@ GK_API static void play_update(void *ud, double step) {
     gk_camera_follow(&G.cam, cx, cy, step, 0.12);  /* then eases the rest of the way */
     gk_camera_clamp(&G.cam);
     gk_tween_step(&G.pulse, step * 1000.0);
+    gk_shake_step(&G.shake, step * 1000.0);
 
     /* collect: the player against every mote */
     for (int i = 0; i < G.world.count; i++) {
@@ -1023,6 +1060,7 @@ GK_API static void play_update(void *ud, double step) {
         if (gk_aabb(G.player_body.box, b->box)) {
             G.score += wr->value;
             G.pulse = gk_tween_make(1, 0, 300, gk_ease_named("out"));
+            gk_shake_start(&G.shake);
             /* queued, so the loop is not disturbed by the removal */
             gk_ecs_queue_destroy(&G.world, e->id);
             G.left--;
@@ -1057,8 +1095,13 @@ GK_API static void title_render(void *ud, double alpha) {
 GK_API static void play_render(void *ud, double alpha) {
     (void)ud; (void)alpha;
     /* everything is drawn in world space, pushed through the camera */
+    /* the shake is an offset on the camera, applied at draw time only, so it
+       never leaks into the simulation */
+    gk_camera drawn = G.cam;
+    drawn.x += G.shake.dx;
+    drawn.y += G.shake.dy;
     double sx, sy;
-    gk_camera_world_to_screen(&G.cam, G.player_body.box.x, G.player_body.box.y, &sx, &sy);
+    gk_camera_world_to_screen(&drawn, G.player_body.box.x, G.player_body.box.y, &sx, &sy);
     DrawRectangleRec((Rectangle){ (float)sx, (float)sy,
                                   (float)(G.player_body.box.w * G.cam.zoom),
                                   (float)(G.player_body.box.h * G.cam.zoom) }, RAYWHITE);
@@ -1072,11 +1115,11 @@ GK_API static void play_render(void *ud, double alpha) {
     }
     /* the border, drawn from the tiles the camera can actually see */
     gk_visible_tile vis[256];
-    int n = gk_tiles_visible(&G.map, &G.cam, vis, 256);
+    int n = gk_tiles_visible(&G.map, &drawn, vis, 256);
     for (int i = 0; i < n; i++) {
         if (vis[i].id == 0) continue;               /* empty: the background shows through */
         double tx, ty, tw, th;
-        gk_sprite_dst(&G.cam, vis[i].x, vis[i].y, vis[i].w, vis[i].h, &tx, &ty, &tw, &th);
+        gk_sprite_dst(&drawn, vis[i].x, vis[i].y, vis[i].w, vis[i].h, &tx, &ty, &tw, &th);
         DrawRectangleRec((Rectangle){ (float)tx, (float)ty, (float)tw, (float)th }, DARKGRAY);
     }
 
@@ -1089,7 +1132,7 @@ GK_API static void play_render(void *ud, double alpha) {
         gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
         if (!b) continue;
         double mx, my, mw, mh;
-        gk_sprite_dst(&G.cam, b->box.x + shrink, b->box.y + shrink,
+        gk_sprite_dst(&drawn, b->box.x + shrink, b->box.y + shrink,
                       b->box.w - shrink * 2, b->box.h - shrink * 2, &mx, &my, &mw, &mh);
         DrawRectangleRec((Rectangle){ (float)mx, (float)my, (float)mw, (float)mh }, GREEN);
     }
