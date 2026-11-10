@@ -182,6 +182,90 @@ static void test_motion(void) {
     OK("tween uses the curve", gk_tween(0, 100, 100, gk_ease_named("out"), 25) > 25);
 }
 
+
+/* ---------- camera ---------- */
+static void test_camera(void) {
+    gk_camera c = gk_camera_make(640, 400);
+    OK("a camera starts at unit zoom", c.zoom == 1.0);
+    OK("a camera starts at the origin", c.x == 0 && c.y == 0);
+
+    double sx, sy, wx, wy;
+    gk_camera_world_to_screen(&c, 0, 0, &sx, &sy);
+    OKD("the camera's own point is the viewport centre", sx == 320 && sy == 200, "%.1f,%.1f", sx, sy);
+
+    gk_camera_world_to_screen(&c, 100, 50, &sx, &sy);
+    OKD("a world point offsets by its distance", sx == 420 && sy == 250, "%.1f,%.1f", sx, sy);
+
+    /* round trip */
+    gk_camera_screen_to_world(&c, sx, sy, &wx, &wy);
+    OKD("screen to world inverts world to screen", near(wx, 100, 1e-9) && near(wy, 50, 1e-9), "%.6f,%.6f", wx, wy);
+
+    gk_camera_screen_to_world(&c, 320, 200, &wx, &wy);
+    OK("the centre maps to the camera", near(wx, 0, 1e-9) && near(wy, 0, 1e-9));
+
+    /* zoom */
+    c.zoom = 2.0;
+    gk_camera_world_to_screen(&c, 100, 50, &sx, &sy);
+    OKD("zoom scales the offset", sx == 520 && sy == 300, "%.1f,%.1f", sx, sy);
+    gk_camera_screen_to_world(&c, sx, sy, &wx, &wy);
+    OK("zoom round-trips", near(wx, 100, 1e-9) && near(wy, 50, 1e-9));
+    c.zoom = 1.0;
+
+    /* follow */
+    c.x = 0; c.y = 0;
+    gk_camera_follow(&c, 1000, 1000, 1.0 / 60.0, 0.12);
+    OKD("follow moves towards the target", c.x > 0 && c.x < 1000, "%.2f", c.x);
+    double first = c.x;
+    gk_camera_follow(&c, 1000, 1000, 1.0 / 60.0, 0.12);
+    OKD("follow keeps closing the gap", c.x > first && c.x < 1000, "%.2f", c.x);
+    for (int i = 0; i < 400; i++) gk_camera_follow(&c, 1000, 1000, 1.0 / 60.0, 0.12);
+    OKD("follow arrives", near(c.x, 1000, 1.0), "%.3f", c.x);
+    c.x = 0; c.y = 0;
+    gk_camera_follow(&c, 500, 500, 1.0 / 60.0, 1.0);
+    OK("speed 1 snaps", near(c.x, 500, 1e-9));
+    c.x = 10; c.y = 10;
+    gk_camera_follow(&c, 500, 500, 1.0 / 60.0, 0);
+    OK("speed 0 does not move", c.x == 10 && c.y == 10);
+
+    /* bounds: world bigger than the viewport */
+    gk_camera b = gk_camera_make(640, 400);
+    gk_camera_bounds(&b, 0, 0, 1280, 800);
+    b.x = 0; b.y = 0;
+    gk_camera_clamp(&b);
+    OKD("the left edge stops at half a viewport", b.x == 320 && b.y == 200, "%.1f,%.1f", b.x, b.y);
+    b.x = 5000; b.y = 5000;
+    gk_camera_clamp(&b);
+    OKD("the right edge stops inside the world", b.x == 1280 - 320 && b.y == 800 - 200, "%.1f,%.1f", b.x, b.y);
+    b.x = 700; b.y = 400;
+    gk_camera_clamp(&b);
+    OK("a camera already inside is untouched", b.x == 700 && b.y == 400);
+
+    /* zoomed in, the clamp allows a wider travel */
+    b.zoom = 2.0;
+    b.x = 0; b.y = 0;
+    gk_camera_clamp(&b);
+    OKD("zoom changes how far the view may travel", b.x == 160 && b.y == 100, "%.1f,%.1f", b.x, b.y);
+
+    /* a world smaller than the viewport centres instead of clamping */
+    gk_camera sm = gk_camera_make(640, 400);
+    gk_camera_bounds(&sm, 0, 0, 320, 200);
+    sm.x = 999; sm.y = 999;
+    gk_camera_clamp(&sm);
+    OKD("a small world is centred", sm.x == 160 && sm.y == 100, "%.1f,%.1f", sm.x, sm.y);
+
+    /* unbounded */
+    gk_camera u = gk_camera_make(640, 400);
+    u.x = 99999; u.y = -99999;
+    gk_camera_clamp(&u);
+    OK("unbounded keeps the camera where it is", u.x == 99999 && u.y == -99999);
+
+    /* a zero zoom is repaired rather than dividing by zero */
+    gk_camera z = gk_camera_make(640, 400);
+    z.zoom = 0;
+    gk_camera_clamp(&z);
+    OK("a zero zoom is repaired", z.zoom == 1.0);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -494,6 +578,7 @@ int main(void) {
     printf("raylib-starter tests\n\n");
     test_maths();
     test_motion();
+    test_camera();
     test_rng();
     test_loop();
     test_input();

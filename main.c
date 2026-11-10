@@ -192,6 +192,74 @@ GK_API static double gk_tween(double from, double to, double dur_ms, const gk_ea
     return from + (to - from) * k;
 }
 
+
+/* ---------- camera ---------- */
+/* A camera is a point in the world that sits at the middle of the viewport, plus
+   a zoom. World to screen is a translate and a scale; screen to world is its
+   inverse, which is what a click needs. Bounds keep the view inside the level. */
+typedef struct {
+    double x, y;          /* the world point at the centre of the viewport */
+    double zoom;
+    double vw, vh;        /* the viewport, in pixels */
+    double bx, by, bw, bh; /* world bounds; bw or bh of 0 means unbounded */
+} gk_camera;
+
+GK_API static gk_camera gk_camera_make(double vw, double vh) {
+    gk_camera c;
+    memset(&c, 0, sizeof c);
+    c.vw = vw;
+    c.vh = vh;
+    c.zoom = 1.0;
+    return c;
+}
+
+GK_API static void gk_camera_bounds(gk_camera *c, double x, double y, double w, double h) {
+    c->bx = x; c->by = y; c->bw = w; c->bh = h;
+}
+
+GK_API static void gk_camera_world_to_screen(const gk_camera *c, double wx, double wy,
+                                             double *sx, double *sy) {
+    if (sx) *sx = (wx - c->x) * c->zoom + c->vw * 0.5;
+    if (sy) *sy = (wy - c->y) * c->zoom + c->vh * 0.5;
+}
+
+GK_API static void gk_camera_screen_to_world(const gk_camera *c, double sx, double sy,
+                                             double *wx, double *wy) {
+    if (wx) *wx = (sx - c->vw * 0.5) / c->zoom + c->x;
+    if (wy) *wy = (sy - c->vh * 0.5) / c->zoom + c->y;
+}
+
+/* Move the view towards a target. speed is 0..1 per call: 1 snaps, small values
+   ease. The step is applied through the same easing the kits use. */
+GK_API static void gk_camera_follow(gk_camera *c, double tx, double ty, double step,
+                                    double speed) {
+    double k = speed <= 0 ? 0 : (speed >= 1 ? 1 : 1 - pow(1 - speed, step * 60.0));
+    c->x += (tx - c->x) * k;
+    c->y += (ty - c->y) * k;
+}
+
+/* Keep the whole viewport inside the world. When the world is smaller than the
+   viewport there is nothing to keep, so the camera centres on it instead. */
+GK_API static void gk_camera_clamp(gk_camera *c) {
+    if (c->zoom <= 0) c->zoom = 1;
+    double half_w = c->vw / (2 * c->zoom);
+    double half_h = c->vh / (2 * c->zoom);
+    if (c->bw > 0) {
+        if (c->bw <= half_w * 2) c->x = c->bx + c->bw * 0.5;
+        else {
+            if (c->x - half_w < c->bx) c->x = c->bx + half_w;
+            if (c->x + half_w > c->bx + c->bw) c->x = c->bx + c->bw - half_w;
+        }
+    }
+    if (c->bh > 0) {
+        if (c->bh <= half_h * 2) c->y = c->by + c->bh * 0.5;
+        else {
+            if (c->y - half_h < c->by) c->y = c->by + half_h;
+            if (c->y + half_h > c->by + c->bh) c->y = c->by + c->bh - half_h;
+        }
+    }
+}
+
 /* ---------- loop ---------- */
 typedef void (*gk_step_fn)(void *ud, double step);
 typedef void (*gk_draw_fn)(void *ud, double alpha);
@@ -514,6 +582,8 @@ GK_API static int gk_ecs_run(gk_world *w) {
 /* ==================================================================== */
 
 #define GK_MAX_MOTES 12
+#define GK_WORLD_W 1280.0
+#define GK_WORLD_H 800.0
 
 typedef struct { float x, y; } gk_vel;
 typedef struct { gk_rect box; } gk_body;
@@ -531,6 +601,7 @@ typedef struct {
     float px, py;            /* the player */
     int score, best, left;   /* left = motes still to collect */
     double pulse;            /* eases out when a mote is collected */
+    gk_camera cam;           /* follows the player over a world bigger than the window */
     double clock;
     uint32_t player_id;
     gk_body player_body;
@@ -564,8 +635,8 @@ GK_API static void sys_move(gk_world *w, gk_entity *e) {
     /* bounce off the field edges rather than leaving it */
     if (b->box.x < 0) { b->box.x = 0; v->x = -v->x; }
     if (b->box.y < 0) { b->box.y = 0; v->y = -v->y; }
-    if (b->box.x + b->box.w > 640) { b->box.x = 640 - b->box.w; v->x = -v->x; }
-    if (b->box.y + b->box.h > 400) { b->box.y = 400 - b->box.h; v->y = -v->y; }
+    if (b->box.x + b->box.w > GK_WORLD_W) { b->box.x = (float)(GK_WORLD_W - b->box.w); v->x = -v->x; }
+    if (b->box.y + b->box.h > GK_WORLD_H) { b->box.y = (float)(GK_WORLD_H - b->box.h); v->y = -v->y; }
 }
 
 /* ---------- scenes ---------- */
@@ -584,6 +655,10 @@ GK_API static void play_enter(void *ud, const void *data) {
     G.left = 6;
     G.px = 320;
     G.py = 200;
+    G.cam = gk_camera_make(640, 400);
+    gk_camera_bounds(&G.cam, 0, 0, GK_WORLD_W, GK_WORLD_H);
+    G.cam.x = G.px;
+    G.cam.y = G.py;
     gk_world_init(&G.world);
     gk_rng_seed(&G.rng, (uint32_t)(G.best * 7919u + 12345u));
 
@@ -598,7 +673,8 @@ GK_API static void play_enter(void *ud, const void *data) {
         gk_body *b = (gk_body *)calloc(1, sizeof *b);
         gk_vel *v = (gk_vel *)calloc(1, sizeof *v);
         gk_worth *wr = (gk_worth *)calloc(1, sizeof *wr);
-        b->box = (gk_rect){ (float)gk_rng_int(&G.rng, 20, 600), (float)gk_rng_int(&G.rng, 20, 360), 12, 12 };
+        b->box = (gk_rect){ (float)gk_rng_int(&G.rng, 20, (int)GK_WORLD_W - 20),
+                            (float)gk_rng_int(&G.rng, 20, (int)GK_WORLD_H - 20), 12, 12 };
         v->x = (float)gk_rng_int(&G.rng, -60, 60);
         v->y = (float)gk_rng_int(&G.rng, -60, 60);
         wr->value = gk_rng_int(&G.rng, 1, 3);
@@ -625,6 +701,9 @@ GK_API static void play_update(void *ud, double step) {
     G.py = G.player_body.box.y;
 
     gk_ecs_run(&G.world);
+    gk_camera_follow(&G.cam, G.player_body.box.x + G.player_body.box.w * 0.5,
+                     G.player_body.box.y + G.player_body.box.h * 0.5, step, 0.12);
+    gk_camera_clamp(&G.cam);
     if (G.pulse > 0) G.pulse -= step * 3.0;
     if (G.pulse < 0) G.pulse = 0;
 
@@ -670,14 +749,18 @@ GK_API static void title_render(void *ud, double alpha) {
 
 GK_API static void play_render(void *ud, double alpha) {
     (void)ud; (void)alpha;
-    DrawRectangleRec((Rectangle){ G.player_body.box.x, G.player_body.box.y,
-                                  G.player_body.box.w, G.player_body.box.h }, RAYWHITE);
+    /* everything is drawn in world space, pushed through the camera */
+    double sx, sy;
+    gk_camera_world_to_screen(&G.cam, G.player_body.box.x, G.player_body.box.y, &sx, &sy);
+    DrawRectangleRec((Rectangle){ (float)sx, (float)sy,
+                                  (float)(G.player_body.box.w * G.cam.zoom),
+                                  (float)(G.player_body.box.h * G.cam.zoom) }, RAYWHITE);
     /* the collect pulse: a ring that eases outward, the same curve a JS game uses */
     if (G.pulse > 0) {
         const gk_ease_t *e = gk_ease_named("out");
         float k = (float)gk_ease(e, 1.0 - G.pulse);
         float grow = 6.0f * k;
-        DrawRectangleLines((int)(G.player_body.box.x - grow), (int)(G.player_body.box.y - grow),
+        DrawRectangleLines((int)(sx - grow), (int)(sy - grow),
                            (int)(G.player_body.box.w + grow * 2), (int)(G.player_body.box.h + grow * 2),
                            Fade(GREEN, 1.0f - k));
     }
@@ -686,7 +769,11 @@ GK_API static void play_render(void *ud, double alpha) {
         if (e->id == G.player_id) continue;
         gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
         if (!b) continue;
-        DrawRectangleRec((Rectangle){ b->box.x, b->box.y, b->box.w, b->box.h }, GREEN);
+        double mx, my;
+        gk_camera_world_to_screen(&G.cam, b->box.x, b->box.y, &mx, &my);
+        DrawRectangleRec((Rectangle){ (float)mx, (float)my,
+                                      (float)(b->box.w * G.cam.zoom),
+                                      (float)(b->box.h * G.cam.zoom) }, GREEN);
     }
     DrawText(TextFormat("score %d   left %d   %0.0fs", G.score, G.left, G.clock), 12, 10, 18, RAYWHITE);
 }
