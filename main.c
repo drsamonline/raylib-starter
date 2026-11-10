@@ -193,6 +193,41 @@ GK_API static double gk_tween(double from, double to, double dur_ms, const gk_ea
 }
 
 
+/* A tween with state: step it with a delta and read the value. The pure
+   gk_tween() above answers "what is the value at time t"; this one carries the t. */
+typedef struct {
+    double from, to;
+    double dur;      /* ms */
+    double t;        /* elapsed ms */
+    const gk_ease_t *ease;
+    int done;
+} gk_tween_t;
+
+GK_API static gk_tween_t gk_tween_make(double from, double to, double dur_ms, const gk_ease_t *ease) {
+    gk_tween_t tw = { from, to, dur_ms, 0, ease, dur_ms <= 0 ? 1 : 0 };
+    return tw;
+}
+
+GK_API static void gk_tween_step(gk_tween_t *tw, double dt_ms) {
+    if (!tw || tw->done) return;
+    tw->t += dt_ms > 0 ? dt_ms : 0;
+    if (tw->t >= tw->dur) { tw->t = tw->dur; tw->done = 1; }
+}
+
+GK_API static double gk_tween_value(const gk_tween_t *tw) {
+    if (!tw) return 0;
+    return gk_tween(tw->from, tw->to, tw->dur, tw->ease, tw->t);
+}
+
+/* Restart in place, optionally towards a new target. */
+GK_API static void gk_tween_retarget(gk_tween_t *tw, double to) {
+    if (!tw) return;
+    tw->from = gk_tween_value(tw);
+    tw->to = to;
+    tw->t = 0;
+    tw->done = tw->dur <= 0 ? 1 : 0;
+}
+
 /* ---------- camera ---------- */
 /* A camera is a point in the world that sits at the middle of the viewport, plus
    a zoom. World to screen is a translate and a scale; screen to world is its
@@ -236,6 +271,19 @@ GK_API static void gk_camera_follow(gk_camera *c, double tx, double ty, double s
     double k = speed <= 0 ? 0 : (speed >= 1 ? 1 : 1 - pow(1 - speed, step * 60.0));
     c->x += (tx - c->x) * k;
     c->y += (ty - c->y) * k;
+}
+
+/* A dead zone: the camera holds still while the target is inside a box of w x h
+   around its centre, then moves just enough to put the target back on the edge.
+   This is what stops a camera twitching on every small step. */
+GK_API static void gk_camera_deadzone(gk_camera *c, double tx, double ty, double w, double h) {
+    if (!c || c->zoom <= 0) return;
+    double hw = (w > 0 ? w : 0) / (2 * c->zoom);
+    double hh = (h > 0 ? h : 0) / (2 * c->zoom);
+    if (tx < c->x - hw) c->x = tx + hw;
+    else if (tx > c->x + hw) c->x = tx - hw;
+    if (ty < c->y - hh) c->y = ty + hh;
+    else if (ty > c->y + hh) c->y = ty - hh;
 }
 
 /* Keep the whole viewport inside the world. When the world is smaller than the
@@ -806,7 +854,7 @@ typedef struct {
 
     float px, py;            /* the player */
     int score, best, left;   /* left = motes still to collect */
-    double pulse;            /* eases out when a mote is collected */
+    gk_tween_t pulse;        /* 1 -> 0 over 300ms when a mote is collected */
     gk_camera cam;           /* follows the player over a world bigger than the window */
     gk_tilemap map;          /* a solid border, so the player collides instead of bouncing */
     gk_anim mote_anim;       /* the motes pulse through four frames */
@@ -865,6 +913,7 @@ GK_API static void play_enter(void *ud, const void *data) {
     G.left = 6;
     G.px = 320;
     G.py = 200;
+    G.pulse = gk_tween_make(0, 0, 300, gk_ease_named("out"));
     G.cam = gk_camera_make(640, 400);
     gk_camera_bounds(&G.cam, 0, 0, GK_WORLD_W, GK_WORLD_H);
     G.cam.x = G.px;
@@ -926,11 +975,12 @@ GK_API static void play_update(void *ud, double step) {
     G.py = G.player_body.box.y;
 
     gk_ecs_run(&G.world);
-    gk_camera_follow(&G.cam, G.player_body.box.x + G.player_body.box.w * 0.5,
-                     G.player_body.box.y + G.player_body.box.h * 0.5, step, 0.12);
+    double cx = G.player_body.box.x + G.player_body.box.w * 0.5;
+    double cy = G.player_body.box.y + G.player_body.box.h * 0.5;
+    gk_camera_deadzone(&G.cam, cx, cy, 120, 80);   /* holds still for small steps */
+    gk_camera_follow(&G.cam, cx, cy, step, 0.12);  /* then eases the rest of the way */
     gk_camera_clamp(&G.cam);
-    if (G.pulse > 0) G.pulse -= step * 3.0;
-    if (G.pulse < 0) G.pulse = 0;
+    gk_tween_step(&G.pulse, step * 1000.0);
 
     /* collect: the player against every mote */
     for (int i = 0; i < G.world.count; i++) {
@@ -941,7 +991,7 @@ GK_API static void play_update(void *ud, double step) {
         if (!b || !wr) continue;
         if (gk_aabb(G.player_body.box, b->box)) {
             G.score += wr->value;
-            G.pulse = 1.0;
+            G.pulse = gk_tween_make(1, 0, 300, gk_ease_named("out"));
             gk_ecs_destroy(&G.world, e->id); /* swap-removes, so step back */
             G.left--;
             i--;
@@ -981,9 +1031,8 @@ GK_API static void play_render(void *ud, double alpha) {
                                   (float)(G.player_body.box.w * G.cam.zoom),
                                   (float)(G.player_body.box.h * G.cam.zoom) }, RAYWHITE);
     /* the collect pulse: a ring that eases outward, the same curve a JS game uses */
-    if (G.pulse > 0) {
-        const gk_ease_t *e = gk_ease_named("out");
-        float k = (float)gk_ease(e, 1.0 - G.pulse);
+    if (!G.pulse.done) {
+        float k = (float)(1.0 - gk_tween_value(&G.pulse));
         float grow = 6.0f * k;
         DrawRectangleLines((int)(sx - grow), (int)(sy - grow),
                            (int)(G.player_body.box.w + grow * 2), (int)(G.player_body.box.h + grow * 2),

@@ -480,6 +480,94 @@ static void test_sprites(void) {
     OKD("zooming out shows more tiles", n > 2, "%d", n);
 }
 
+
+/* ---------- stateful tween and camera deadzone ---------- */
+static void test_tween_state(void) {
+    const gk_ease_t *lin = gk_ease_named("linear");
+    gk_tween_t tw = gk_tween_make(10, 20, 200, lin);
+    OK("a new tween starts at from", gk_tween_value(&tw) == 10);
+    OK("a new tween is not done", tw.done == 0);
+
+    gk_tween_step(&tw, 100);
+    OKD("halfway is halfway", near(gk_tween_value(&tw), 15, 1e-6), "%.6f", gk_tween_value(&tw));
+    gk_tween_step(&tw, 100);
+    OK("the end is the target", gk_tween_value(&tw) == 20);
+    OK("it reports done", tw.done == 1);
+
+    gk_tween_step(&tw, 500);
+    OK("stepping past the end does not overshoot", gk_tween_value(&tw) == 20);
+
+    /* a negative delta is ignored rather than running time backwards */
+    gk_tween_t back = gk_tween_make(0, 100, 100, lin);
+    gk_tween_step(&back, 50);
+    gk_tween_step(&back, -1000);
+    OKD("a negative step is ignored", near(gk_tween_value(&back), 50, 1e-6), "%.3f", gk_tween_value(&back));
+
+    /* zero duration is already done */
+    gk_tween_t instant = gk_tween_make(5, 9, 0, lin);
+    OK("a zero-duration tween is done at once", instant.done == 1 && gk_tween_value(&instant) == 9);
+
+    /* the curve is applied */
+    gk_tween_t out = gk_tween_make(0, 100, 100, gk_ease_named("out"));
+    gk_tween_step(&out, 25);
+    OKD("the easing curve is applied", gk_tween_value(&out) > 25, "%.2f", gk_tween_value(&out));
+
+    /* retarget continues from where it is, not from the old start */
+    gk_tween_t rt = gk_tween_make(0, 100, 100, lin);
+    gk_tween_step(&rt, 50);              /* at 50 */
+    gk_tween_retarget(&rt, 0);           /* now head back to 0 */
+    OKD("retarget starts from the current value", near(gk_tween_value(&rt), 50, 1e-6), "%.3f", gk_tween_value(&rt));
+    gk_tween_step(&rt, 100);
+    OKD("and lands on the new target", near(gk_tween_value(&rt), 0, 1e-6), "%.3f", gk_tween_value(&rt));
+
+    gk_tween_step(NULL, 10);
+    OK("stepping a null tween is safe", gk_tween_value(NULL) == 0);
+    gk_tween_retarget(NULL, 5);
+    OK("retargeting a null tween is safe", 1);
+}
+
+static void test_deadzone(void) {
+    gk_camera c = gk_camera_make(640, 400);
+    c.x = 0; c.y = 0;
+
+    /* a 200x100 dead zone: the target inside it does not move the camera */
+    gk_camera_deadzone(&c, 50, 20, 200, 100);
+    OK("a target inside the dead zone does not move the camera", c.x == 0 && c.y == 0);
+
+    gk_camera_deadzone(&c, 99, 49, 200, 100);
+    OK("just inside the edge still does not move it", c.x == 0 && c.y == 0);
+
+    /* outside to the right: the camera follows just enough */
+    c.x = 0; c.y = 0;
+    gk_camera_deadzone(&c, 200, 0, 200, 100);
+    OKD("a target outside pushes the camera", near(c.x, 100, 1e-9), "%.2f", c.x);
+
+    c.x = 0; c.y = 0;
+    gk_camera_deadzone(&c, -200, 0, 200, 100);
+    OKD("and to the left", near(c.x, -100, 1e-9), "%.2f", c.x);
+
+    c.x = 0; c.y = 0;
+    gk_camera_deadzone(&c, 0, 200, 200, 100);
+    OKD("and down", near(c.y, 150, 1e-9), "%.2f", c.y);
+
+    c.x = 0; c.y = 0;
+    gk_camera_deadzone(&c, 0, -200, 200, 100);
+    OKD("and up", near(c.y, -150, 1e-9), "%.2f", c.y);
+
+    /* zoomed in, the dead zone is smaller in world units */
+    gk_camera z = gk_camera_make(640, 400);
+    z.zoom = 2.0;
+    z.x = 0; z.y = 0;
+    gk_camera_deadzone(&z, 60, 0, 200, 100);
+    OKD("zoom shrinks the dead zone in world units", near(z.x, 10, 1e-9), "%.2f", z.x);
+
+    /* a zero-size dead zone is a hard follow */
+    gk_camera h = gk_camera_make(640, 400);
+    h.x = 0; h.y = 0;
+    gk_camera_deadzone(&h, 123, 45, 0, 0);
+    OKD("a zero dead zone follows exactly", near(h.x, 123, 1e-9) && near(h.y, 45, 1e-9), "%.1f,%.1f", h.x, h.y);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -793,6 +881,8 @@ int main(void) {
     test_maths();
     test_motion();
     test_camera();
+    test_tween_state();
+    test_deadzone();
     test_tilemap();
     test_sprites();
     test_rng();
