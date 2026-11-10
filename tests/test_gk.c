@@ -445,7 +445,7 @@ static void test_sprites(void) {
     gk_visible_tile out[64];
     gk_camera all = gk_camera_make(200, 200);
     all.x = 40; all.y = 24;     /* centred on the map */
-    int n = gk_tiles_visible(&m, &all, out, 64);
+    int n = gk_tiles_visible(&m, &all, NULL, out, 64);
     OKD("a view covering the map sees every tile", n == 15, "%d", n);
     OK("the first is the top-left tile", out[0].tx == 0 && out[0].ty == 0 && out[0].id == 1);
     OK("tiles carry world rectangles", out[0].x == 0 && out[0].y == 0 && out[0].w == 16);
@@ -453,30 +453,30 @@ static void test_sprites(void) {
     /* a 32x16 viewport centred at x=24 covers world x 8..40, which is tiles 0..2 */
     gk_camera small = gk_camera_make(32, 16);
     small.x = 24; small.y = 8;
-    n = gk_tiles_visible(&m, &small, out, 64);
+    n = gk_tiles_visible(&m, &small, NULL, out, 64);
     OKD("a small view sees only its own tiles", n == 3, "%d", n);
     OKD("and they are the right ones", out[0].tx == 0 && out[2].tx == 2 && out[0].ty == 0,
         "%d..%d", out[0].tx, out[2].tx);
 
     gk_camera far = gk_camera_make(32, 16);
     far.x = 10000; far.y = 10000;
-    n = gk_tiles_visible(&m, &far, out, 64);
+    n = gk_tiles_visible(&m, &far, NULL, out, 64);
     OK("a view outside the map sees nothing", n == 0);
 
-    n = gk_tiles_visible(&m, &all, out, 4);
+    n = gk_tiles_visible(&m, &all, NULL, out, 4);
     OKD("the capacity is respected", n == 4, "%d", n);
 
-    n = gk_tiles_visible(&m, NULL, out, 64);
+    n = gk_tiles_visible(&m, NULL, NULL, out, 64);
     OKD("a null camera means the whole map", n == 15, "%d", n);
 
-    n = gk_tiles_visible(NULL, &all, out, 64);
+    n = gk_tiles_visible(NULL, &all, NULL, out, 64);
     OK("a null map sees nothing", n == 0);
 
     /* zoomed out, more tiles fit in the same viewport */
     gk_camera zoomed = gk_camera_make(32, 16);
     zoomed.zoom = 0.5;
     zoomed.x = 24; zoomed.y = 8;
-    n = gk_tiles_visible(&m, &zoomed, out, 64);
+    n = gk_tiles_visible(&m, &zoomed, NULL, out, 64);
     OKD("zooming out shows more tiles", n > 2, "%d", n);
 }
 
@@ -842,6 +842,41 @@ static void test_str_eq(void) {
     OK("null and a string do not", gk_str_eq(NULL, "a") == 0 && gk_str_eq("a", NULL) == 0);
 }
 
+
+/* ---------- tiles that name an atlas frame ---------- */
+static void test_tile_frames(void) {
+    gk_tilemap m = tm_make();
+    gk_camera all = gk_camera_make(200, 200);
+    all.x = 40; all.y = 24;
+    gk_visible_tile out[64];
+
+    int n = gk_tiles_visible(&m, &all, NULL, out, 64);
+    OK("without a frame map every frame is -1", n > 0 && out[0].frame == -1);
+
+    /* id 1 -> frame 7, id 0 -> frame 2 */
+    int frames[256];
+    for (int i = 0; i < 256; i++) frames[i] = -1;
+    frames[0] = 2;
+    frames[1] = 7;
+
+    n = gk_tiles_visible(&m, &all, frames, out, 64);
+    OK("a solid tile carries its frame", out[0].id == 1 && out[0].frame == 7);
+    int saw_empty = 0;
+    for (int i = 0; i < n; i++) if (out[i].id == 0) { saw_empty = 1; OK("an empty tile carries its own frame", out[i].frame == 2); break; }
+    OK("the corridor has an empty tile to check", saw_empty == 1);
+
+    /* a frame map and an atlas agree on the source rectangle */
+    gk_atlas a = { 16, 16, 4, 8 };
+    gk_rect src = gk_atlas_src(&a, out[0].frame);
+    OKD("the frame resolves to a source rect", src.w == 16 && src.h == 16 && src.x == 48, "%.0f,%.0f", src.x, src.y);
+
+    /* an id with no frame stays -1 rather than picking frame 0 */
+    int none[256];
+    for (int i = 0; i < 256; i++) none[i] = -1;
+    n = gk_tiles_visible(&m, &all, none, out, 64);
+    OK("an id with no frame is -1, not 0", out[0].frame == -1);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -1165,6 +1200,7 @@ int main(void) {
     test_phase();
     test_str_eq();
     test_sprites();
+    test_tile_frames();
     test_rng();
     test_loop();
     test_input();

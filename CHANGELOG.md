@@ -1,6 +1,8 @@
 # Changelog
 ## 1.0.0 — 2026-11-10
 ### Added
+- `gk_tiles_visible` takes a frame map, so each visible tile carries the atlas frame for its id
+  and a renderer gets a source rect and a destination rect from one walk
 - the demo's round is driven by a `gk_machine`: warmup → live → finished, with the scene drawing
   "ready" during warmup. The scene owns the screen, the machine owns the phase
 - `gk_str_eq`, a null-safe compare, because `gk_machine_current` can return NULL
@@ -26,7 +28,7 @@
 - Android `ndk-build` scaffolding, marked unbuilt
 
 ### Verified
-- 320 assertions in the demo suite, 28 in the audio suite, 35 in snake, all passing under gcc and zig cc
+- 326 assertions in the demo suite, 28 in the audio suite, 35 in snake, all passing under gcc and zig cc
 - both games run 120 frames headless past the title scene (2551 and 712 draw calls), driven by a scripted autoplay so the play renderer executes
 - real binary: 931,272 bytes stripped against raylib 6.2 - 11x under the ceiling
 - warning-free under `-Wall -Wextra -Werror` in eight configurations

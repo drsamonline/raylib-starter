@@ -675,10 +675,12 @@ GK_API static void gk_sprite_dst(const gk_camera *c, double wx, double wy, doubl
 typedef struct {
     int tx, ty, id;
     double x, y, w, h;   /* in world pixels */
+    int frame;           /* atlas frame for this id, or -1 when there is no atlas */
 } gk_visible_tile;
 
+/* frame_of maps a tile id to an atlas frame; pass NULL for none. */
 GK_API static int gk_tiles_visible(const gk_tilemap *m, const gk_camera *c,
-                                   gk_visible_tile *out, int max) {
+                                   const int *frame_of, gk_visible_tile *out, int max) {
     if (!m || m->tile <= 0 || !out || max <= 0) return 0;
     /* the world rectangle the camera covers */
     double wx0 = 0, wy0 = 0, wx1 = 0, wy1 = 0;
@@ -711,6 +713,7 @@ GK_API static int gk_tiles_visible(const gk_tilemap *m, const gk_camera *c,
             out[n].y = (double)ty * m->tile;
             out[n].w = m->tile;
             out[n].h = m->tile;
+            out[n].frame = frame_of ? frame_of[out[n].id & 0xFF] : -1;
             n++;
         }
     }
@@ -1375,7 +1378,7 @@ GK_API static void play_render(void *ud, double alpha) {
     }
     /* the border, drawn from the tiles the camera can actually see */
     gk_visible_tile vis[256];
-    int n = gk_tiles_visible(&G.map, &drawn, vis, 256);
+    int n = gk_tiles_visible(&G.map, &drawn, NULL, vis, 256);
     for (int i = 0; i < n; i++) {
         if (vis[i].id == 0) continue;               /* empty: the background shows through */
         double tx, ty, tw, th;

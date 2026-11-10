@@ -47,7 +47,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_audio` | a thin wrapper over raylib's device: `init`/`load`/`play`/`stop`/`volume`/`playing`, volume clamped, calls routed and counted headless |
 | `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
 | `gk_atlas` / `gk_anim` / `gk_sprite_dst` | frame rectangles from a grid atlas, which frame is showing at time t, and where a world sprite lands on screen |
-| `gk_tiles_visible` | the tiles a camera can see, as world rectangles — a renderer walks the list, a test counts it |
+| `gk_tiles_visible` | the tiles a camera can see, as world rectangles, each with an optional atlas frame — a renderer walks the list, a test counts it |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
 
 ### Targets
@@ -55,7 +55,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | target | needs | gives |
 | --- | --- | --- |
 | `make` | raylib + a C compiler | `gk`, the desktop game |
-| `make test` | a C compiler | three suites, 383 assertions, headless, no display |
+| `make test` | a C compiler | three suites, 389 assertions, headless, no display |
 | `make size` | raylib | builds, then fails above 10 MB |
 | `make web` | emsdk + raylib built for wasm | `web/gk.html` + `.js` + `.wasm` |
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
@@ -99,7 +99,7 @@ tests can drive the real game headless.
 
 ```
 make test
-320 passed, 0 failed    (the demo game)
+326 passed, 0 failed    (the demo game)
 28 passed, 0 failed     (audio)
 35 passed, 0 failed     (snake)
 ```
