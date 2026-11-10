@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # was @v4
 
       - name: Build the demo game's suite
-        run: cc -std=c11 -O2 -Wall -Wextra -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
+        run: cc -std=c11 -O2 -Wall -Wextra -Werror -DGK_NO_MAIN -I. -Istub -o gk-tests main.c stub/raylib_stub.c tests/test_gk.c -lm
 
       - name: Run the demo game's suite
         run: ./gk-tests
