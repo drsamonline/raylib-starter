@@ -568,6 +568,72 @@ static void test_deadzone(void) {
     OKD("a zero dead zone follows exactly", near(h.x, 123, 1e-9) && near(h.y, 45, 1e-9), "%.1f,%.1f", h.x, h.y);
 }
 
+
+/* ---------- deferred destroy ---------- */
+static int g_destroyed_in_pass = 0;
+static void sys_kill(gk_world *w, gk_entity *e) {
+    /* queue, never destroy inline: the pass is still walking the array */
+    if (gk_ecs_queue_destroy(w, e->id) == 0) g_destroyed_in_pass++;
+}
+
+static void test_deferred(void) {
+    gk_world w;
+    gk_world_init(&w);
+    int body = 1;
+    uint32_t a = gk_ecs_create(&w), b = gk_ecs_create(&w), c = gk_ecs_create(&w);
+    gk_ecs_add(&w, a, COMP_BODY, &body);
+    gk_ecs_add(&w, b, COMP_BODY, &body);
+    gk_ecs_add(&w, c, COMP_BODY, &body);
+
+    g_destroyed_in_pass = 0;
+    gk_ecs_system(&w, (1u << COMP_BODY), sys_kill);
+    int ran = gk_ecs_run(&w);
+    OKD("every matching entity is visited in the pass", ran == 3, "%d", ran);
+    OKD("each queued its own destroy", g_destroyed_in_pass == 3, "%d", g_destroyed_in_pass);
+    OK("nothing is removed until the flush", gk_ecs_count(&w) == 3);
+
+    int applied = gk_ecs_flush(&w);
+    OKD("the flush applies all three", applied == 3, "%d", applied);
+    OK("and the world is empty", gk_ecs_count(&w) == 0);
+
+    /* queueing the same id twice is harmless */
+    gk_world w2;
+    gk_world_init(&w2);
+    uint32_t d = gk_ecs_create(&w2);
+    OK("queue one", gk_ecs_queue_destroy(&w2, d) == 0);
+    OK("queue it again", gk_ecs_queue_destroy(&w2, d) == 0);
+    OKD("the second is skipped on flush", gk_ecs_flush(&w2) == 1, "%d applied", 1);
+    OK("the world is empty", gk_ecs_count(&w2) == 0);
+
+    /* an unknown id in the queue is skipped, not fatal */
+    gk_world w3;
+    gk_world_init(&w3);
+    gk_ecs_queue_destroy(&w3, 999);
+    OK("an unknown id flushes to nothing", gk_ecs_flush(&w3) == 0);
+
+    /* a full queue refuses rather than overrunning */
+    gk_world w4;
+    gk_world_init(&w4);
+    uint32_t keep = gk_ecs_create(&w4);
+    int accepted = 0, refused = 0;
+    for (int i = 0; i < GK_MAX_QUEUED + 5; i++) {
+        if (gk_ecs_queue_destroy(&w4, keep) == 0) accepted++; else refused++;
+    }
+    OKD("the queue caps at GK_MAX_QUEUED", accepted == GK_MAX_QUEUED, "%d accepted", accepted);
+    OKD("and refuses the rest", refused == 5, "%d refused", refused);
+
+    /* zero and null are refused */
+    OK("id 0 is refused", gk_ecs_queue_destroy(&w4, 0) == -1);
+    OK("a null world is refused", gk_ecs_queue_destroy(NULL, 1) == -1);
+    OK("flushing a null world is safe", gk_ecs_flush(NULL) == 0);
+
+    /* flush on an empty queue is a no-op */
+    gk_world w5;
+    gk_world_init(&w5);
+    gk_ecs_create(&w5);
+    OK("an empty flush changes nothing", gk_ecs_flush(&w5) == 0 && gk_ecs_count(&w5) == 1);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -884,6 +950,7 @@ int main(void) {
     test_tween_state();
     test_deadzone();
     test_tilemap();
+    test_deferred();
     test_sprites();
     test_rng();
     test_loop();

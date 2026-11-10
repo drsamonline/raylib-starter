@@ -717,6 +717,14 @@ struct gk_entity {
 
 typedef struct gk_world gk_world;
 
+/* A structural change queued for the end of the pass. Destroying an entity while
+   a system or a loop is iterating it is the classic way to skip one or read freed
+   memory; the queue defers it instead. */
+#ifndef GK_MAX_QUEUED
+#define GK_MAX_QUEUED 32
+#endif
+typedef struct { uint32_t id; } gk_queued_destroy;
+
 typedef struct gk_entity gk_entity;
 
 typedef struct {
@@ -730,6 +738,8 @@ struct gk_world {
     uint32_t next_id;
     gk_system systems[GK_MAX_SYSTEMS];
     int sys_count;
+    gk_queued_destroy queue[GK_MAX_QUEUED];
+    int qcount;
 };
 
 GK_API static void gk_world_init(gk_world *w) {
@@ -803,6 +813,27 @@ GK_API static int gk_ecs_remove(gk_world *w, uint32_t id, int comp) {
 }
 
 GK_API static int gk_ecs_count(const gk_world *w) { return w->count; }
+
+/* Queue a destroy for the end of the pass. Returns -1 if the queue is full, so a
+   caller that ignores the result still cannot corrupt the world. */
+GK_API static int gk_ecs_queue_destroy(gk_world *w, uint32_t id) {
+    if (!w || id == 0) return -1;
+    if (w->qcount >= GK_MAX_QUEUED) return -1;
+    w->queue[w->qcount++].id = id;
+    return 0;
+}
+
+/* Apply the queue in order. Ids already gone are skipped, so queueing the same
+   entity twice is harmless. */
+GK_API static int gk_ecs_flush(gk_world *w) {
+    if (!w) return 0;
+    int applied = 0;
+    for (int i = 0; i < w->qcount; i++) {
+        if (gk_ecs_destroy(w, w->queue[i].id) == 0) applied++;
+    }
+    w->qcount = 0;
+    return applied;
+}
 
 GK_API static int gk_ecs_system(gk_world *w, uint32_t mask, void (*fn)(gk_world *, gk_entity *)) {
     if (!fn || w->sys_count >= GK_MAX_SYSTEMS) return -1;
@@ -992,11 +1023,12 @@ GK_API static void play_update(void *ud, double step) {
         if (gk_aabb(G.player_body.box, b->box)) {
             G.score += wr->value;
             G.pulse = gk_tween_make(1, 0, 300, gk_ease_named("out"));
-            gk_ecs_destroy(&G.world, e->id); /* swap-removes, so step back */
+            /* queued, so the loop is not disturbed by the removal */
+            gk_ecs_queue_destroy(&G.world, e->id);
             G.left--;
-            i--;
         }
     }
+    gk_ecs_flush(&G.world);
 
     if (G.left <= 0 || G.clock > 30.0) {
         if (G.score > G.best) { G.best = G.score; gk_progress_store(); }

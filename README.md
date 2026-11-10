@@ -37,7 +37,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_scenes` | named scenes with `enter` / `exit` / `update` / `render`; an unknown name is refused rather than blanking the screen |
 | `gk_input` | key down and pressed-this-frame, driven by the host — no engine types in the core |
 | `gk_save` / `gk_load` | a struct on disk with a magic, a version and a CRC32, so a half-written save is caught, not loaded |
-| `gk_ecs` | entities, component bags and systems over a bitmask; systems are handed the entity, so component access is O(1); fixed capacity, no allocation |
+| `gk_ecs` | entities, component bags and systems over a bitmask; systems are handed the entity, so component access is O(1); `gk_ecs_queue_destroy` + `gk_ecs_flush` defer structural change out of a pass; fixed capacity, no allocation |
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_camera` | world↔screen, follow with easing, zoom, and bounds that keep the view inside the level |
@@ -95,7 +95,7 @@ tests can drive the real game headless.
 
 ```
 make test
-215 passed, 0 failed    (the demo game)
+252 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
