@@ -76,11 +76,27 @@ bool WindowShouldClose(void) { return g_should_close != 0; }
 void SetTargetFPS(int fps) { (void)fps; }
 
 void BeginDrawing(void) {}
+/* GK_AUTOPLAY makes a headless run press keys on a schedule, so the link check
+   reaches the play scene instead of sitting on the title. Test scaffolding, not
+   part of the game: the game reads input exactly as it would from a keyboard. */
+static void stub_autoplay(void) {
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("GK_AUTOPLAY"); on = (e && *e) ? 1 : 0; }
+    if (!on) return;
+    if (g_frames == 4) Stub_KeyDown(KEY_SPACE);          /* start */
+    if (g_frames == 5) Stub_KeyUp(KEY_SPACE);
+    if (g_frames == 12) Stub_KeyDown(KEY_RIGHT);         /* move, so the camera follows */
+    if (g_frames == 40) { Stub_KeyUp(KEY_RIGHT); Stub_KeyDown(KEY_DOWN); }
+    if (g_frames == 70) { Stub_KeyUp(KEY_DOWN); Stub_KeyDown(KEY_LEFT); }
+    if (g_frames == 100) Stub_KeyUp(KEY_LEFT);
+}
+
 void EndDrawing(void) {
     /* a frame is over: "pressed" and "released" last exactly one frame */
     memset(g_key_pressed, 0, sizeof g_key_pressed);
     memset(g_key_released, 0, sizeof g_key_released);
     g_frames++;
+    stub_autoplay();
     if (g_frame_budget > 0 && g_frames >= g_frame_budget) g_should_close = 1;
 }
 void ClearBackground(Color color) { (void)color; g_draw_calls++; }

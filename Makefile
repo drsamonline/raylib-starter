@@ -74,24 +74,24 @@ size-real:
 	printf 'OK: under the 10 MB ceiling, %sx headroom\n' "$$(( $(MAX_BYTES) / bytes ))"
 
 # Link the REAL main() (not the GK_NO_MAIN core) against the stub and run it for
-# a fixed number of frames. This is the integration check: the game loop, the
-# scene machine, the render path and the key mapping all execute, headless. What
-# it cannot prove is that raylib draws - that needs a GPU and a display.
+# a fixed number of frames. GK_AUTOPLAY presses start and the arrows on a
+# schedule, so the run reaches the play scene and the tile and sprite renderers
+# execute, not just the title. The draw count is asserted for that reason: a run
+# that never left the title draws 480, a run in play draws far more.
 LINK_FRAMES ?= 120
 
 link-check: main.c examples/snake.c stub/raylib.h stub/raylib_stub.c
 	$(CC) $(CFLAGS) -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
 	$(CC) $(CFLAGS) -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
 	@for game in gk snake; do \
-		out=$$(GK_FRAMES=$(LINK_FRAMES) ./$$game-linkcheck); \
-		printf '%-6s %s\n' "$$game" "$$out"; \
-		case "$$out" in \
-			frames=$(LINK_FRAMES)" "draws=0) printf 'FAIL: %s drew nothing\n' "$$game"; exit 1;; \
-			frames=$(LINK_FRAMES)" "draws=*) : ;; \
-			*) printf 'FAIL: %s did not run $(LINK_FRAMES) frames\n' "$$game"; exit 1;; \
-		esac; \
+		out=$$(GK_AUTOPLAY=1 GK_FRAMES=$(LINK_FRAMES) ./$$game-linkcheck); \
+		frames=$$(printf '%s' "$$out" | sed -n 's/.*frames=\([0-9]*\).*/\1/p'); \
+		draws=$$(printf '%s' "$$out" | sed -n 's/.*draws=\([0-9]*\).*/\1/p'); \
+		printf '%-6s frames=%s draws=%s\n' "$$game" "$$frames" "$$draws"; \
+		[ "$$frames" = "$(LINK_FRAMES)" ] || { printf 'FAIL: %s ran %s frames\n' "$$game" "$$frames"; exit 1; }; \
+		[ "$$draws" -gt 500 ] || { printf 'FAIL: %s drew only %s - the play scene never ran\n' "$$game" "$$draws"; exit 1; }; \
 	done
-	@printf 'OK: both games ran %s frames headless\n' "$(LINK_FRAMES)"
+	@printf 'OK: both games ran %s frames headless, past the title\n' "$(LINK_FRAMES)"
 
 # Cross-compile the core for other machines. Needs a compiler that can target
 # them (zig cc can, for all of these) - no NDK, no SDK, no sysroot.

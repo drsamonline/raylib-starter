@@ -385,6 +385,101 @@ static void test_tilemap(void) {
     OK("a zero tile size moves freely", r.x == 25 && r.y == 25);
 }
 
+
+/* ---------- sprites, animation and visible tiles ---------- */
+static void test_sprites(void) {
+    gk_atlas a = { 16, 24, 4, 10 };   /* 4 across, 10 frames */
+    gk_rect r = gk_atlas_src(&a, 0);
+    OK("frame 0 is the top-left", r.x == 0 && r.y == 0 && r.w == 16 && r.h == 24);
+    r = gk_atlas_src(&a, 3);
+    OKD("the fourth frame ends the first row", r.x == 48 && r.y == 0, "%.0f,%.0f", r.x, r.y);
+    r = gk_atlas_src(&a, 4);
+    OKD("the fifth wraps to the second row", r.x == 0 && r.y == 24, "%.0f,%.0f", r.x, r.y);
+    r = gk_atlas_src(&a, 9);
+    OKD("the last frame is one into the third row", r.x == 16 && r.y == 48, "%.0f,%.0f", r.x, r.y);
+    r = gk_atlas_src(&a, 10);
+    OK("a frame past the end wraps", r.x == 0 && r.y == 0);
+    r = gk_atlas_src(&a, -1);
+    OKD("a negative frame wraps backwards", r.x == 16 && r.y == 48, "%.0f,%.0f", r.x, r.y);
+
+    gk_atlas bad = { 0, 0, 0, 0 };
+    r = gk_atlas_src(&bad, 3);
+    OK("a degenerate atlas gives an empty rect", r.w == 0 && r.h == 0);
+    r = gk_atlas_src(NULL, 3);
+    OK("a null atlas gives an empty rect", r.w == 0 && r.h == 0);
+
+    /* animation */
+    gk_anim an = { a, 10.0, 0, 3, 1 };   /* 4 frames at 10 fps, looping */
+    OK("t=0 shows the first frame", gk_anim_frame(&an, 0) == 0);
+    OKD("0.15s is frame 1", gk_anim_frame(&an, 0.15) == 1, "%d", gk_anim_frame(&an, 0.15));
+    OKD("0.35s is frame 3", gk_anim_frame(&an, 0.35) == 3, "%d", gk_anim_frame(&an, 0.35));
+    OKD("0.45s wraps to frame 0", gk_anim_frame(&an, 0.45) == 0, "%d", gk_anim_frame(&an, 0.45));
+
+    gk_anim once = { a, 10.0, 0, 3, 0 };  /* no loop */
+    OKD("a non-looping anim holds the last frame", gk_anim_frame(&once, 99.0) == 3, "%d", gk_anim_frame(&once, 99.0));
+
+    gk_anim still = { a, 0, 2, 5, 1 };
+    OK("fps 0 is a still", gk_anim_frame(&still, 12.3) == 2);
+
+    gk_anim sub = { a, 10.0, 2, 5, 1 };   /* a sub-range, 4 frames */
+    OK("a sub-range starts at from", gk_anim_frame(&sub, 0) == 2);
+    OKD("a sub-range wraps inside itself", gk_anim_frame(&sub, 0.45) == 2, "%d", gk_anim_frame(&sub, 0.45));
+
+    gk_anim rev = { a, 10.0, 5, 2, 1 };   /* from > to is tolerated */
+    OK("a reversed range still yields a frame", gk_anim_frame(&rev, 0) == 2);
+
+    /* destination rect through a camera */
+    gk_camera c = gk_camera_make(640, 400);
+    double dx, dy, dw, dh;
+    gk_sprite_dst(&c, 0, 0, 16, 16, &dx, &dy, &dw, &dh);
+    OKD("a sprite at the camera's point is centred", near(dx, 320, 1e-9) && near(dy, 200, 1e-9), "%.1f,%.1f", dx, dy);
+    OK("an unzoomed sprite keeps its size", dw == 16 && dh == 16);
+    c.zoom = 2.0;
+    gk_sprite_dst(&c, 10, 10, 16, 16, &dx, &dy, &dw, &dh);
+    OKD("zoom scales the sprite", near(dw, 32, 1e-9) && near(dx, 340, 1e-9), "w %.1f x %.1f", dw, dx);
+    gk_sprite_dst(NULL, 5, 7, 8, 9, &dx, &dy, &dw, &dh);
+    OK("a null camera is world coordinates", dx == 5 && dy == 7 && dw == 8 && dh == 9);
+
+    /* visible tiles */
+    gk_tilemap m = tm_make();   /* 5x3 of 16px */
+    gk_visible_tile out[64];
+    gk_camera all = gk_camera_make(200, 200);
+    all.x = 40; all.y = 24;     /* centred on the map */
+    int n = gk_tiles_visible(&m, &all, out, 64);
+    OKD("a view covering the map sees every tile", n == 15, "%d", n);
+    OK("the first is the top-left tile", out[0].tx == 0 && out[0].ty == 0 && out[0].id == 1);
+    OK("tiles carry world rectangles", out[0].x == 0 && out[0].y == 0 && out[0].w == 16);
+
+    /* a 32x16 viewport centred at x=24 covers world x 8..40, which is tiles 0..2 */
+    gk_camera small = gk_camera_make(32, 16);
+    small.x = 24; small.y = 8;
+    n = gk_tiles_visible(&m, &small, out, 64);
+    OKD("a small view sees only its own tiles", n == 3, "%d", n);
+    OKD("and they are the right ones", out[0].tx == 0 && out[2].tx == 2 && out[0].ty == 0,
+        "%d..%d", out[0].tx, out[2].tx);
+
+    gk_camera far = gk_camera_make(32, 16);
+    far.x = 10000; far.y = 10000;
+    n = gk_tiles_visible(&m, &far, out, 64);
+    OK("a view outside the map sees nothing", n == 0);
+
+    n = gk_tiles_visible(&m, &all, out, 4);
+    OKD("the capacity is respected", n == 4, "%d", n);
+
+    n = gk_tiles_visible(&m, NULL, out, 64);
+    OKD("a null camera means the whole map", n == 15, "%d", n);
+
+    n = gk_tiles_visible(NULL, &all, out, 64);
+    OK("a null map sees nothing", n == 0);
+
+    /* zoomed out, more tiles fit in the same viewport */
+    gk_camera zoomed = gk_camera_make(32, 16);
+    zoomed.zoom = 0.5;
+    zoomed.x = 24; zoomed.y = 8;
+    n = gk_tiles_visible(&m, &zoomed, out, 64);
+    OKD("zooming out shows more tiles", n > 2, "%d", n);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -699,6 +794,7 @@ int main(void) {
     test_motion();
     test_camera();
     test_tilemap();
+    test_sprites();
     test_rng();
     test_loop();
     test_input();

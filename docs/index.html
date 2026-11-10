@@ -35,7 +35,7 @@ code{background:rgba(127,127,127,.14);padding:1px 5px;border-radius:4px;font-siz
 
 <main>
   <div class="big">
-    <div class="card"><b>219</b><span>assertions, both games, all passing</span></div>
+    <div class="card"><b>250</b><span>assertions, both games, all passing</span></div>
     <div class="card"><b>57 KB</b><span>the game's own code, -O2 object</span></div>
     <div class="card"><b>882 KB</b><span>real binary, linked against raylib 6.2</span></div>
     <div class="card"><b>0</b><span>engine calls in the core</span></div>
@@ -73,6 +73,7 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
       <tr><td><code>gk_ecs</code></td><td>entities, component bags and systems over a bitmask, fixed capacity, no malloc</td></tr>
       <tr><td><code>gk_camera</code></td><td>world↔screen, follow with easing, zoom, bounds that keep the view in the level</td></tr>
       <tr><td><code>gk_tilemap</code>, <code>gk_move</code></td><td>solid tiles and collide-and-slide, axis by axis</td></tr>
+      <tr><td><code>gk_atlas</code>, <code>gk_anim</code>, <code>gk_tiles_visible</code></td><td>frame rectangles, which frame is showing, and the tiles a camera can see</td></tr>
       <tr><td><code>gk_rng</code></td><td>mulberry32 — the same sequence as game-kit's <code>rng()</code>, verified to 1e-12</td></tr>
       <tr><td><code>gk_ease</code>, <code>gk_spring</code>, <code>gk_tween</code></td><td>motion-kit's 11 curves and settle-time springs, verified to 1e-9</td></tr>
     </tbody>
@@ -86,9 +87,9 @@ make wasm-core CC="zig cc"   # the core alone as wasm32, needs nothing</pre>
   <h2>The closest a GPU-less machine gets</h2>
   <p class="mut"><code>make link-check</code> links the real <code>main()</code> of both games — not
   the <code>GK_NO_MAIN</code> core — against the stub and runs each for 120 frames.</p>
-  <pre>gk     frames=120 draws=480
-snake  frames=120 draws=480
-OK: both games ran 120 frames headless</pre>
+  <pre>gk     frames=120 draws=2533
+snake  frames=120 draws=712
+OK: both games ran 120 frames headless, past the title</pre>
   <p class="mut">The loop, the scene machine, the render path and the key mapping all execute.
   What it cannot prove is that raylib draws: that needs a GPU and a display.</p>
 

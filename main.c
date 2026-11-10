@@ -358,6 +358,111 @@ GK_API static gk_rect gk_move(const gk_tilemap *m, gk_rect box, double dx, doubl
     return box;
 }
 
+
+/* ---------- sprites and animation ---------- */
+/* An atlas is a grid of frames in one image: frame n sits at (n % cols, n / cols)
+   of frame_w x frame_h. Nothing here touches a texture - it produces rectangles,
+   which is what a renderer needs and what a test can check. */
+typedef struct {
+    int frame_w, frame_h;
+    int cols, count;
+} gk_atlas;
+
+typedef struct {
+    gk_atlas atlas;
+    double fps;
+    int from, to;   /* inclusive frame range to play */
+    int loop;       /* 1 wraps, 0 holds the last frame */
+} gk_anim;
+
+GK_API static gk_rect gk_atlas_src(const gk_atlas *a, int frame) {
+    gk_rect r = { 0, 0, 0, 0 };
+    if (!a || a->count <= 0 || a->cols <= 0 || a->frame_w <= 0 || a->frame_h <= 0) return r;
+    int f = frame % a->count;
+    if (f < 0) f += a->count;
+    r.x = (float)((f % a->cols) * a->frame_w);
+    r.y = (float)((f / a->cols) * a->frame_h);
+    r.w = (float)a->frame_w;
+    r.h = (float)a->frame_h;
+    return r;
+}
+
+/* Which frame is showing at time t (seconds). fps of 0 is a still image. */
+GK_API static int gk_anim_frame(const gk_anim *an, double t) {
+    if (!an) return 0;
+    int from = an->from, to = an->to;
+    if (to < from) { int tmp = from; from = to; to = tmp; }
+    int span = to - from + 1;
+    if (span <= 0) return 0;
+    if (!(an->fps > 0) || !(t > 0)) return from;
+    int step = (int)(t * an->fps);
+    if (step < 0) step = 0;
+    if (an->loop) return from + (step % span);
+    int f = from + step;
+    return f > to ? to : f;
+}
+
+/* Where a world-space sprite of w x h lands on screen, through a camera. */
+GK_API static void gk_sprite_dst(const gk_camera *c, double wx, double wy, double w, double h,
+                                 double *dx, double *dy, double *dw, double *dh) {
+    double sx = wx, sy = wy;
+    if (c) gk_camera_world_to_screen(c, wx, wy, &sx, &sy);
+    double z = (c && c->zoom > 0) ? c->zoom : 1.0;
+    if (dx) *dx = sx;
+    if (dy) *dy = sy;
+    if (dw) *dw = w * z;
+    if (dh) *dh = h * z;
+}
+
+/* ---------- drawing tiles ---------- */
+/* The tiles a camera can see, as world rectangles. A renderer walks this list and
+   draws each; a test walks it and counts. Empty tiles are reported too, with id 0,
+   because a renderer may want to draw the background from the same list. */
+typedef struct {
+    int tx, ty, id;
+    double x, y, w, h;   /* in world pixels */
+} gk_visible_tile;
+
+GK_API static int gk_tiles_visible(const gk_tilemap *m, const gk_camera *c,
+                                   gk_visible_tile *out, int max) {
+    if (!m || m->tile <= 0 || !out || max <= 0) return 0;
+    /* the world rectangle the camera covers */
+    double wx0 = 0, wy0 = 0, wx1 = 0, wy1 = 0;
+    if (c) {
+        double z = c->zoom > 0 ? c->zoom : 1.0;
+        wx0 = c->x - c->vw / (2 * z);
+        wy0 = c->y - c->vh / (2 * z);
+        wx1 = c->x + c->vw / (2 * z);
+        wy1 = c->y + c->vh / (2 * z);
+    } else {
+        wx1 = (double)m->w * m->tile;
+        wy1 = (double)m->h * m->tile;
+    }
+    int tx0 = gk_tilemap_tile_at(wx0, m->tile);
+    int ty0 = gk_tilemap_tile_at(wy0, m->tile);
+    int tx1 = gk_tilemap_tile_at(wx1 - 1e-9, m->tile);
+    int ty1 = gk_tilemap_tile_at(wy1 - 1e-9, m->tile);
+    if (tx0 < 0) tx0 = 0;
+    if (ty0 < 0) ty0 = 0;
+    if (tx1 >= m->w) tx1 = m->w - 1;
+    if (ty1 >= m->h) ty1 = m->h - 1;
+
+    int n = 0;
+    for (int ty = ty0; ty <= ty1 && n < max; ty++) {
+        for (int tx = tx0; tx <= tx1 && n < max; tx++) {
+            out[n].tx = tx;
+            out[n].ty = ty;
+            out[n].id = gk_tilemap_id(m, tx, ty);
+            out[n].x = (double)tx * m->tile;
+            out[n].y = (double)ty * m->tile;
+            out[n].w = m->tile;
+            out[n].h = m->tile;
+            n++;
+        }
+    }
+    return n;
+}
+
 /* ---------- loop ---------- */
 typedef void (*gk_step_fn)(void *ud, double step);
 typedef void (*gk_draw_fn)(void *ud, double alpha);
@@ -704,6 +809,7 @@ typedef struct {
     double pulse;            /* eases out when a mote is collected */
     gk_camera cam;           /* follows the player over a world bigger than the window */
     gk_tilemap map;          /* a solid border, so the player collides instead of bouncing */
+    gk_anim mote_anim;       /* the motes pulse through four frames */
     unsigned char tiles[GK_TILES_X * GK_TILES_Y];
     double clock;
     uint32_t player_id;
@@ -775,6 +881,7 @@ GK_API static void play_enter(void *ud, const void *data) {
     }
     static const unsigned char SOLID_IDS[256] = { 0, 1 };
     G.map = (gk_tilemap){ GK_TILES_X, GK_TILES_Y, GK_TILE, G.tiles, SOLID_IDS, 1 };
+    G.mote_anim = (gk_anim){ { 12, 12, 2, 4 }, 6.0, 0, 3, 1 };
 
     G.player_id = gk_ecs_create(&G.world);
     G.player_body.box = (gk_rect){ G.px, G.py, 18, 18 };
@@ -882,16 +989,28 @@ GK_API static void play_render(void *ud, double alpha) {
                            (int)(G.player_body.box.w + grow * 2), (int)(G.player_body.box.h + grow * 2),
                            Fade(GREEN, 1.0f - k));
     }
+    /* the border, drawn from the tiles the camera can actually see */
+    gk_visible_tile vis[256];
+    int n = gk_tiles_visible(&G.map, &G.cam, vis, 256);
+    for (int i = 0; i < n; i++) {
+        if (vis[i].id == 0) continue;               /* empty: the background shows through */
+        double tx, ty, tw, th;
+        gk_sprite_dst(&G.cam, vis[i].x, vis[i].y, vis[i].w, vis[i].h, &tx, &ty, &tw, &th);
+        DrawRectangleRec((Rectangle){ (float)tx, (float)ty, (float)tw, (float)th }, DARKGRAY);
+    }
+
+    /* the motes pulse through four frames of an atlas */
+    int frame = gk_anim_frame(&G.mote_anim, G.clock);
+    float shrink = (float)(frame % 2) * 2.0f;
     for (int i = 0; i < G.world.count; i++) {
         gk_entity *e = &G.world.ents[i];
         if (e->id == G.player_id) continue;
         gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
         if (!b) continue;
-        double mx, my;
-        gk_camera_world_to_screen(&G.cam, b->box.x, b->box.y, &mx, &my);
-        DrawRectangleRec((Rectangle){ (float)mx, (float)my,
-                                      (float)(b->box.w * G.cam.zoom),
-                                      (float)(b->box.h * G.cam.zoom) }, GREEN);
+        double mx, my, mw, mh;
+        gk_sprite_dst(&G.cam, b->box.x + shrink, b->box.y + shrink,
+                      b->box.w - shrink * 2, b->box.h - shrink * 2, &mx, &my, &mw, &mh);
+        DrawRectangleRec((Rectangle){ (float)mx, (float)my, (float)mw, (float)mh }, GREEN);
     }
     DrawText(TextFormat("score %d   left %d   %0.0fs", G.score, G.left, G.clock), 12, 10, 18, RAYWHITE);
 }

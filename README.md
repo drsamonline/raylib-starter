@@ -42,6 +42,8 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_camera` | world↔screen, follow with easing, zoom, and bounds that keep the view inside the level |
 | `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
+| `gk_atlas` / `gk_anim` / `gk_sprite_dst` | frame rectangles from a grid atlas, which frame is showing at time t, and where a world sprite lands on screen |
+| `gk_tiles_visible` | the tiles a camera can see, as world rectangles — a renderer walks the list, a test counts it |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
 
 ### Targets
@@ -93,7 +95,7 @@ tests can drive the real game headless.
 
 ```
 make test
-184 passed, 0 failed    (the demo game)
+215 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
@@ -116,6 +118,14 @@ What the suite covers, all headless — no engine, no window, no display:
   resolving both axes, sliding along a wall without losing the free axis, a block mid-sweep
   stopping the mover there rather than at the far wall, many 1px steps landing in exactly the
   same place as one big sweep, a closed world, and a null or zero-tile map moving freely
+- **sprites and animation**: atlas rectangles for the first, a row end, a wrapped row, the last
+  frame, a frame past the end and a negative frame; a degenerate and a null atlas; animation at
+  t = 0, mid-frame, the wrap, a non-looping anim holding its last frame, fps 0 as a still, a
+  sub-range wrapping inside itself and a reversed range; sprite destination through a camera at
+  zoom 1 and 2, and with no camera at all
+- **visible tiles**: a view covering the map sees all 15, a 32×16 view sees exactly 3, a view
+  outside the map sees none, the capacity is respected, a null camera means the whole map, a null
+  map means none, and zooming out shows more
 - **the camera**: world↔screen round-trips at zoom 1 and 2, the camera's own point lands at the
   viewport centre, follow closes the gap and arrives, speed 1 snaps and speed 0 does not move,
   bounds stop at half a viewport, zoomed in the view may travel further, a world smaller than the
@@ -144,11 +154,12 @@ Being precise, because "it builds" is easy to overclaim:
   retained libc or a creeping dependency is caught rather than noticed later.
 - **Both suites run in CI**: 100 assertions for the demo game and 35 for snake, under gcc on
   Ubuntu, in the same workflow that builds the wasm core.
-- **Both games actually run**: `make link-check` links the real `main()` of each game (not the
-  `GK_NO_MAIN` core) against the stub and runs it for 120 frames. The log reads
-  `gk frames=120 draws=480` and `snake frames=120 draws=480` — the loop, the scene machine, the
-  render path and the key mapping all execute. This is the closest a machine without a GPU can
-  get to "it runs".
+- **Both games actually run, past the title**: `make link-check` links the real `main()` of each
+  game (not the `GK_NO_MAIN` core) against the stub and runs it for 120 frames while the stub
+  presses start and the arrows on a schedule. The log reads `gk frames=120 draws=2533` and
+  `snake frames=120 draws=712` — the loop, the scene machine, the key mapping, the tile renderer
+  and the sprite renderer all execute. A run that never left the title draws 480, so the draw
+  count is asserted as a floor: it is what proves the play scene ran.
 - **Capacities are compile-time**: `-DGK_MAX_ENTITIES=8` was run through the whole suite to
   prove the core adapts, and the default is 256.
 - **The Emscripten build was not run here** — emsdk is not installable in the environment this
@@ -193,7 +204,7 @@ the result. Measured on raylib 6.2, linux amd64:
 | --- | --- | --- |
 | `libraylib.a` | 2,847,000 | the engine, static |
 | game + engine, unstripped | 1,091,856 | dead code already dropped by the linker |
-| game + engine, **stripped** | **904,696** | 883 KB, with the camera and tilemap |
+| game + engine, **stripped** | **905,752** | 885 KB, with camera, tilemap and sprites |
 | 10 MB ceiling | 10,485,760 | **11.6× headroom** |
 
 `tools/x11_stubs.c` carries six weak X11 symbols so this links on a machine with no X server;

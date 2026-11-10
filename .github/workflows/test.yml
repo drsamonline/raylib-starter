@@ -50,15 +50,14 @@ jobs:
           cc -std=c11 -O2 -I. -Istub -o gk-linkcheck main.c stub/raylib_stub.c -lm
           cc -std=c11 -O2 -I. -Istub -o snake-linkcheck examples/snake.c stub/raylib_stub.c -lm
           for game in gk snake; do
-            out=$(GK_FRAMES=120 ./$game-linkcheck)
-            printf '%-6s %s\n' "$game" "$out"
-            case "$out" in
-              frames=120" "draws=0) printf 'FAIL: %s drew nothing\n' "$game"; exit 1 ;;
-              frames=120" "draws=*) : ;;
-              *) printf 'FAIL: %s did not run 120 frames\n' "$game"; exit 1 ;;
-            esac
+            out=$(GK_AUTOPLAY=1 GK_FRAMES=120 ./$game-linkcheck)
+            frames=$(printf '%s' "$out" | sed -n 's/.*frames=\([0-9]*\).*/\1/p')
+            draws=$(printf '%s' "$out" | sed -n 's/.*draws=\([0-9]*\).*/\1/p')
+            printf '%-6s frames=%s draws=%s\n' "$game" "$frames" "$draws"
+            [ "$frames" = "120" ] || { printf 'FAIL: %s ran %s frames\n' "$game" "$frames"; exit 1; }
+            [ "$draws" -gt 500 ] || { printf 'FAIL: %s drew only %s - the play scene never ran\n' "$game" "$draws"; exit 1; }
           done
-          printf 'OK: both games ran 120 frames headless\n'
+          printf 'OK: both games ran 120 frames headless, past the title\n'
 
       # The real link: the game against raylib 6.2's own static library, then the
       # 10 MB gate on the actual binary. The weak X11 stubs let it link on a
