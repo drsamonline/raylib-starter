@@ -956,6 +956,9 @@ GK_API static int gk_ecs_run(gk_world *w) {
 typedef struct {
     int loaded;
     float volume;
+    Sound sound;    /* the engine's own handle: raylib's Sound is a struct of
+                       pointers, not an integer, and a wrapper must not pretend
+                       otherwise */
 } gk_audio;
 
 GK_API static int gk_audio_init(gk_audio *a) {
@@ -976,23 +979,22 @@ GK_API static void gk_audio_close(gk_audio *a) {
 GK_API static int gk_audio_load(gk_audio *a, const char *path) {
     if (!a || !path || !*path) return -1;
     Sound s = LoadSound(path);
-    if (s.id <= 0) return -1;
-    a->loaded = s.id;
-    SetSoundVolume(s, a->volume);
+    if (!IsSoundValid(s)) return -1;
+    a->sound = s;
+    a->loaded = 1;
+    SetSoundVolume(a->sound, a->volume);
     return 0;
 }
 
 GK_API static int gk_audio_play(gk_audio *a) {
     if (!a || !a->loaded) return -1;
-    Sound s = { a->loaded };
-    PlaySound(s);
+    PlaySound(a->sound);
     return 0;
 }
 
 GK_API static int gk_audio_stop(gk_audio *a) {
     if (!a || !a->loaded) return -1;
-    Sound s = { a->loaded };
-    StopSound(s);
+    StopSound(a->sound);
     return 0;
 }
 
@@ -1003,14 +1005,13 @@ GK_API static float gk_audio_volume(gk_audio *a, float v) {
     if (v < 0) v = 0;
     if (v > 1) v = 1;
     a->volume = v;
-    if (a->loaded) { Sound s = { a->loaded }; SetSoundVolume(s, v); }
+    if (a->loaded) SetSoundVolume(a->sound, v);
     return a->volume;
 }
 
 GK_API static int gk_audio_playing(gk_audio *a) {
     if (!a || !a->loaded) return 0;
-    Sound s = { a->loaded };
-    return IsSoundPlaying(s) ? 1 : 0;
+    return IsSoundPlaying(a->sound) ? 1 : 0;
 }
 
 #endif /* audio */

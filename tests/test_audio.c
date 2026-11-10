@@ -43,7 +43,7 @@ int main(void) {
     OK("playing with nothing loaded reports not playing", gk_audio_playing(&a) == 0);
 
     OK("a real path loads", gk_audio_load(&a, "hit.wav") == 0);
-    OKD("and it holds a handle", a.loaded > 0, "id %d", a.loaded);
+    OKD("and it is marked loaded", a.loaded == 1, "loaded %d", a.loaded);
 
     Stub_Reset();
     OK("playing succeeds", gk_audio_play(&a) == 0);
@@ -57,7 +57,7 @@ int main(void) {
     OKD("volume above 1 clamps to 1", gk_audio_volume(&a, 1.5f) == 1.0f, "%.2f", gk_audio_volume(&a, 1.5f));
     OKD("volume below 0 clamps to 0", gk_audio_volume(&a, -2.0f) == 0.0f, "%.2f", gk_audio_volume(&a, -2.0f));
     OKD("volume in range is kept", fabsf(gk_audio_volume(&a, 0.4f) - 0.4f) < 1e-6, "%.2f", a.volume);
-    OKD("and reaches the engine", fabsf(Stub_SoundVolume(a.loaded) - 0.4f) < 1e-6, "%.2f", Stub_SoundVolume(a.loaded));
+    OKD("and reaches the engine", fabsf(Stub_SoundVolume(a.sound.id) - 0.4f) < 1e-6, "%.2f", Stub_SoundVolume(a.sound.id));
 
     /* a null wrapper is refused everywhere rather than crashing */
     OK("a null wrapper cannot init", gk_audio_init(NULL) == -1);

@@ -93,6 +93,7 @@ void StopSound(Sound sound) {
 void SetSoundVolume(Sound sound, float volume) {
     if (sound.id > 0 && sound.id < STUB_SOUNDS) g_sound_vol[sound.id] = volume;
 }
+bool IsSoundValid(Sound sound) { return sound.id > 0 && sound.id < STUB_SOUNDS; }
 bool IsSoundPlaying(Sound sound) {
     return sound.id > 0 && sound.id < STUB_SOUNDS && g_sound_playing[sound.id];
 }

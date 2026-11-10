@@ -79,6 +79,7 @@ void PlaySound(Sound sound);
 void StopSound(Sound sound);
 void SetSoundVolume(Sound sound, float volume);
 bool IsSoundPlaying(Sound sound);
+bool IsSoundValid(Sound sound);
 int  Stub_SoundPlays(void);
 float Stub_SoundVolume(int id);
 
