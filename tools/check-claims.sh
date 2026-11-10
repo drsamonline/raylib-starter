@@ -14,7 +14,13 @@ trap 'rm -rf "$tmp"' EXIT
 
 run_suite() {   # name, readme-pattern, build command...
     name=$1; pattern=$2; shift 2
-    "$@" >/dev/null 2>&1 || { echo "FAIL: $name did not build"; exit 1; }
+    # the build output is shown on failure: a check that hides why it failed is
+    # worse than no check
+    if ! "$@" >"$tmp/$name.build" 2>&1; then
+        echo "FAIL: $name did not build"
+        tail -20 "$tmp/$name.build"
+        exit 1
+    fi
     got=$("$tmp/$name" | sed -n 's/^\([0-9][0-9]*\) passed.*/\1/p' | tail -1)
     want=$(grep -oE "$pattern" README.md | head -1 | grep -oE '^[0-9]+')
     [ -n "$got" ] || { echo "FAIL: $name printed no count"; exit 1; }
