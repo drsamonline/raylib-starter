@@ -228,6 +228,55 @@ GK_API static void gk_tween_retarget(gk_tween_t *tw, double to) {
     tw->done = tw->dur <= 0 ? 1 : 0;
 }
 
+/* A chain of tweens, stepped in order. The collect pulse is one; a death
+   sequence is three, and this is the difference. */
+#define GK_MAX_CHAIN 8
+typedef struct {
+    gk_tween_t step[GK_MAX_CHAIN];
+    int count;
+    int at;
+} gk_tween_chain;
+
+GK_API static gk_tween_chain gk_chain_make(void) {
+    gk_tween_chain c;
+    memset(&c, 0, sizeof c);
+    return c;
+}
+
+GK_API static int gk_chain_add(gk_tween_chain *c, double from, double to, double dur_ms, const gk_ease_t *ease) {
+    if (!c || c->count >= GK_MAX_CHAIN) return -1;
+    c->step[c->count++] = gk_tween_make(from, to, dur_ms, ease);
+    return c->count - 1;
+}
+
+GK_API static void gk_chain_step(gk_tween_chain *c, double dt_ms) {
+    if (!c || c->at >= c->count) return;
+    double left = dt_ms > 0 ? dt_ms : 0;
+    /* feed each step only what it needs and hand the rest on, so a chain keeps
+       its total time instead of losing the overshoot at every boundary */
+    while (left > 0 && c->at < c->count) {
+        gk_tween_t *cur = &c->step[c->at];
+        double remaining = cur->dur - cur->t;
+        if (remaining < 0) remaining = 0;
+        double used = left < remaining ? left : remaining;
+        gk_tween_step(cur, used);
+        left -= used;
+        if (!cur->done) break;
+        if (c->at == c->count - 1) break;
+        c->at++;
+    }
+}
+
+GK_API static double gk_chain_value(const gk_tween_chain *c) {
+    if (!c || c->count == 0) return 0;
+    int at = c->at < c->count ? c->at : c->count - 1;
+    return gk_tween_value(&c->step[at]);
+}
+
+GK_API static int gk_chain_done(const gk_tween_chain *c) {
+    return (!c || c->count == 0) ? 1 : (c->at >= c->count - 1 && c->step[c->count - 1].done);
+}
+
 /* ---------- camera ---------- */
 /* A camera is a point in the world that sits at the middle of the viewport, plus
    a zoom. World to screen is a translate and a scale; screen to world is its
@@ -892,6 +941,79 @@ GK_API static int gk_ecs_run(gk_world *w) {
     }
     return ran;
 }
+
+/* ==================================================================== */
+/* audio — the one part of the core that needs the engine's types.      */
+/* ==================================================================== */
+/* Compiled for the real build, and for a test build with GK_AUDIO_TEST so the
+   call routing can be checked headless. The core above stays engine-free. */
+#if !defined(GK_NO_MAIN) || defined(GK_AUDIO_TEST)
+#include "raylib.h"
+
+/* A thin wrapper, and honest about it: raylib owns the device. It exists so the
+   game has one place that talks about sound, and so the calls can be routed and
+   counted in a headless build. What it cannot prove is that anything is audible. */
+typedef struct {
+    int loaded;
+    float volume;
+} gk_audio;
+
+GK_API static int gk_audio_init(gk_audio *a) {
+    if (!a) return -1;
+    memset(a, 0, sizeof *a);
+    a->volume = 1.0f;
+    InitAudioDevice();
+    return IsAudioDeviceReady() ? 0 : -1;
+}
+
+GK_API static void gk_audio_close(gk_audio *a) {
+    if (a) a->loaded = 0;
+    CloseAudioDevice();
+}
+
+/* Load a file, then play it. The handle is stored, not returned, so a game cannot
+   keep a stale one across a reload. */
+GK_API static int gk_audio_load(gk_audio *a, const char *path) {
+    if (!a || !path || !*path) return -1;
+    Sound s = LoadSound(path);
+    if (s.id <= 0) return -1;
+    a->loaded = s.id;
+    SetSoundVolume(s, a->volume);
+    return 0;
+}
+
+GK_API static int gk_audio_play(gk_audio *a) {
+    if (!a || !a->loaded) return -1;
+    Sound s = { a->loaded };
+    PlaySound(s);
+    return 0;
+}
+
+GK_API static int gk_audio_stop(gk_audio *a) {
+    if (!a || !a->loaded) return -1;
+    Sound s = { a->loaded };
+    StopSound(s);
+    return 0;
+}
+
+/* Volume is clamped to 0..1 rather than passed through: a caller that computes
+   1.2 gets 1.0, not a silent device. */
+GK_API static float gk_audio_volume(gk_audio *a, float v) {
+    if (!a) return 0;
+    if (v < 0) v = 0;
+    if (v > 1) v = 1;
+    a->volume = v;
+    if (a->loaded) { Sound s = { a->loaded }; SetSoundVolume(s, v); }
+    return a->volume;
+}
+
+GK_API static int gk_audio_playing(gk_audio *a) {
+    if (!a || !a->loaded) return 0;
+    Sound s = { a->loaded };
+    return IsSoundPlaying(s) ? 1 : 0;
+}
+
+#endif /* audio */
 
 /* ==================================================================== */
 /* the game                                                             */

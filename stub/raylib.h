@@ -68,6 +68,20 @@ bool IsKeyDown(int key);
 bool IsKeyPressed(int key);
 bool IsKeyReleased(int key);
 
+/* audio: no-ops that count, so the wrapper's call routing is testable */
+typedef struct Sound { int id; } Sound;
+void InitAudioDevice(void);
+void CloseAudioDevice(void);
+bool IsAudioDeviceReady(void);
+Sound LoadSound(const char *fileName);
+void UnloadSound(Sound sound);
+void PlaySound(Sound sound);
+void StopSound(Sound sound);
+void SetSoundVolume(Sound sound, float volume);
+bool IsSoundPlaying(Sound sound);
+int  Stub_SoundPlays(void);
+float Stub_SoundVolume(int id);
+
 Color Fade(Color color, float alpha);
 int MeasureText(const char *text, int fontSize);
 

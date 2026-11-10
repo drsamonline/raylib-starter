@@ -48,7 +48,10 @@ void Stub_KeyUp(int key) {
 int Stub_DrawCalls(void) { return g_draw_calls; }
 void Stub_CloseWindow(void) { g_should_close = 1; }
 
+static int g_sound_plays;
+
 void Stub_Reset(void) {
+    g_sound_plays = 0;
     g_frame_time = 1.0 / 60.0;
     g_draw_calls = 0;
     g_should_close = 0;
@@ -58,6 +61,43 @@ void Stub_Reset(void) {
     memset(g_key_pressed, 0, sizeof g_key_pressed);
     memset(g_key_released, 0, sizeof g_key_released);
 }
+
+/* ---- audio: counted, not played ---- */
+#define STUB_SOUNDS 8
+static float g_sound_vol[STUB_SOUNDS];
+static int g_sound_playing[STUB_SOUNDS];
+static int g_audio_ready = 0;
+static int g_next_sound = 1;
+
+void InitAudioDevice(void) { g_audio_ready = 1; }
+void CloseAudioDevice(void) { g_audio_ready = 0; }
+bool IsAudioDeviceReady(void) { return g_audio_ready != 0; }
+Sound LoadSound(const char *fileName) {
+    Sound s = { 0 };
+    if (!fileName || !*fileName || g_next_sound >= STUB_SOUNDS) return s;
+    s.id = g_next_sound++;
+    g_sound_vol[s.id] = 1.0f;
+    return s;
+}
+void UnloadSound(Sound sound) {
+    if (sound.id > 0 && sound.id < STUB_SOUNDS) { g_sound_playing[sound.id] = 0; g_sound_vol[sound.id] = 0; }
+}
+void PlaySound(Sound sound) {
+    if (sound.id <= 0 || sound.id >= STUB_SOUNDS) return;
+    g_sound_playing[sound.id] = 1;
+    g_sound_plays++;
+}
+void StopSound(Sound sound) {
+    if (sound.id > 0 && sound.id < STUB_SOUNDS) g_sound_playing[sound.id] = 0;
+}
+void SetSoundVolume(Sound sound, float volume) {
+    if (sound.id > 0 && sound.id < STUB_SOUNDS) g_sound_vol[sound.id] = volume;
+}
+bool IsSoundPlaying(Sound sound) {
+    return sound.id > 0 && sound.id < STUB_SOUNDS && g_sound_playing[sound.id];
+}
+int   Stub_SoundPlays(void) { return g_sound_plays; }
+float Stub_SoundVolume(int id) { return (id > 0 && id < STUB_SOUNDS) ? g_sound_vol[id] : -1; }
 
 void SetConfigFlags(unsigned int flags) { (void)flags; }
 void InitWindow(int width, int height, const char *title) {

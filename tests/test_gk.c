@@ -697,6 +697,50 @@ static void test_shake(void) {
     OK("null shake calls are safe", gk_shake_running(NULL) == 0);
 }
 
+
+/* ---------- tween chain ---------- */
+static void test_chain(void) {
+    const gk_ease_t *lin = gk_ease_named("linear");
+    gk_tween_chain c = gk_chain_make();
+    OK("a new chain is done", gk_chain_done(&c) == 1);
+    OK("a new chain reads 0", gk_chain_value(&c) == 0);
+
+    OK("adding a step returns its index", gk_chain_add(&c, 0, 10, 100, lin) == 0);
+    OK("adding a second", gk_chain_add(&c, 10, 20, 100, lin) == 1);
+    OK("a chain of two is not done", gk_chain_done(&c) == 0);
+    OK("it starts at the first step's from", gk_chain_value(&c) == 0);
+
+    gk_chain_step(&c, 50);
+    OKD("halfway through the first step", near(gk_chain_value(&c), 5, 1e-6), "%.4f", gk_chain_value(&c));
+    gk_chain_step(&c, 50);
+    OKD("the first step lands", near(gk_chain_value(&c), 10, 1e-6), "%.4f", gk_chain_value(&c));
+    gk_chain_step(&c, 50);
+    OKD("the second step has begun", near(gk_chain_value(&c), 15, 1e-6), "%.4f", gk_chain_value(&c));
+    gk_chain_step(&c, 50);
+    OKD("the chain ends at the last to", near(gk_chain_value(&c), 20, 1e-6), "%.4f", gk_chain_value(&c));
+    OK("and reports done", gk_chain_done(&c) == 1);
+
+    /* overshoot carries into the next step, so a chain keeps its total time */
+    gk_tween_chain o = gk_chain_make();
+    gk_chain_add(&o, 0, 10, 100, lin);
+    gk_chain_add(&o, 10, 20, 100, lin);
+    gk_chain_step(&o, 150);            /* 50ms past the first step's end */
+    OKD("overshoot is carried, not dropped", near(gk_chain_value(&o), 15, 1e-6), "%.4f", gk_chain_value(&o));
+
+    /* the capacity is respected */
+    gk_tween_chain full = gk_chain_make();
+    for (int i = 0; i < GK_MAX_CHAIN; i++) gk_chain_add(&full, 0, 1, 10, lin);
+    OKD("the chain caps at GK_MAX_CHAIN", gk_chain_add(&full, 0, 1, 10, lin) == -1, "%d", GK_MAX_CHAIN);
+
+    /* stepping a finished chain is inert */
+    double last = gk_chain_value(&c);
+    gk_chain_step(&c, 1000);
+    OK("stepping a finished chain changes nothing", gk_chain_value(&c) == last);
+
+    gk_chain_step(NULL, 10);
+    OK("stepping a null chain is safe", gk_chain_value(NULL) == 0 && gk_chain_done(NULL) == 1);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -1015,6 +1059,7 @@ int main(void) {
     test_tilemap();
     test_deferred();
     test_shake();
+    test_chain();
     test_sprites();
     test_rng();
     test_loop();

@@ -32,6 +32,12 @@ jobs:
       - name: Run the snake suite
         run: ./snake-tests
 
+      - name: Build the audio suite
+        run: cc -std=c11 -O2 -Wall -Wextra -Werror -I. -Istub -o audio-tests tests/test_audio.c stub/raylib_stub.c -lm
+
+      - name: Run the audio suite
+        run: ./audio-tests
+
       - name: Install a C compiler that targets wasm32
         run: pip install ziglang
 
