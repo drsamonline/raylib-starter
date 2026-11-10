@@ -27,7 +27,7 @@ jobs:
         run: ./gk-tests
 
       - name: Build the snake suite
-        run: cc -std=c11 -O2 -Wall -Wextra -DGK_NO_MAIN -I. -Istub -DSNAKE_HEADLESS -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
+        run: cc -std=c11 -O2 -Wall -Wextra -Werror -DSNAKE_HEADLESS -I. -Istub -o snake-tests examples/snake.c stub/raylib_stub.c tests/test_snake.c -lm
 
       - name: Run the snake suite
         run: ./snake-tests

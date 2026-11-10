@@ -76,7 +76,10 @@ GK_API static void snake_reset(snake_state *s, uint32_t seed) {
 
 /* A turn into the opposite direction is ignored: the snake cannot reverse. */
 GK_API static int snake_turn(snake_state *s, snake_dir d) {
-    if ((d + 2) % 4 == (int)s->dir) return -1;
+    /* the enum promotes to unsigned here, so compare as ints rather than let gcc
+       warn about mixed signedness under -Werror */
+    int opposite = ((int)d + 2) % 4;
+    if (opposite == (int)s->dir) return -1;
     s->dir = d;
     return 0;
 }
