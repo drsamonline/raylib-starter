@@ -55,7 +55,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | target | needs | gives |
 | --- | --- | --- |
 | `make` | raylib + a C compiler | `gk`, the desktop game |
-| `make test` | a C compiler | 99 assertions, headless, no display |
+| `make test` | a C compiler | three suites, 383 assertions, headless, no display |
 | `make size` | raylib | builds, then fails above 10 MB |
 | `make web` | emsdk + raylib built for wasm | `web/gk.html` + `.js` + `.wasm` |
 | `make wasm-core` | only a wasm32-capable compiler (`CC="zig cc"`) | `web/gk-core.wasm`, and its size |
@@ -144,7 +144,7 @@ What the suite covers, all headless — no engine, no window, no display:
 Being precise, because "it builds" is easy to overclaim:
 
 - **The suite was compiled and run** with `zig cc` (Zig 0.17.1's bundled clang), the only C
-  compiler available in the environment this was written in. 99 assertions, all passing.
+  compiler available in the environment this was written in. 320 assertions, all passing.
 - **The raylib-facing half compiles**: `main.c` with `main()`, the three render functions and the
   key mapping compiles against `stub/raylib.h`, which mirrors raylib 5.x signatures. That catches
   a wrong call, not a wrong engine.
@@ -158,7 +158,7 @@ Being precise, because "it builds" is easy to overclaim:
   with only the loop reachable, which is the portability proof that does not depend on
   Emscripten being installed. CI builds it on every push and fails above **64 KB**, so a
   retained libc or a creeping dependency is caught rather than noticed later.
-- **Both suites run in CI**: 100 assertions for the demo game and 35 for snake, under gcc on
+- **Three suites run in CI**: 320 assertions for the demo game, 35 for snake and 28 for audio, under gcc on
   Ubuntu, in the same workflow that builds the wasm core.
 - **Both games actually run, past the title**: `make link-check` links the real `main()` of each
   game (not the `GK_NO_MAIN` core) against the stub and runs it for 120 frames while the stub
