@@ -260,6 +260,104 @@ GK_API static void gk_camera_clamp(gk_camera *c) {
     }
 }
 
+
+/* ---------- tilemap ---------- */
+/* A grid of tile ids with a solid flag per id, and the move that every
+   platformer needs: step an axis, then push back out of whatever is solid.
+   Resolving one axis at a time is what makes a corner slide instead of stick. */
+typedef struct {
+    int w, h;          /* in tiles */
+    int tile;          /* pixels per tile */
+    const unsigned char *ids;   /* w*h, row-major */
+    const unsigned char *solid; /* 256 flags, indexed by id */
+    int outside_solid;          /* is beyond the edge a wall? 1 by default */
+} gk_tilemap;
+
+GK_API static int gk_tilemap_id(const gk_tilemap *m, int tx, int ty) {
+    if (!m || tx < 0 || ty < 0 || tx >= m->w || ty >= m->h) return -1;
+    return m->ids[ty * m->w + tx];
+}
+
+GK_API static int gk_tilemap_is_solid(const gk_tilemap *m, int tx, int ty) {
+    if (!m) return 0;
+    if (tx < 0 || ty < 0 || tx >= m->w || ty >= m->h) return m->outside_solid;
+    int id = m->ids[ty * m->w + tx];
+    return id >= 0 && id < 256 ? (m->solid[id] ? 1 : 0) : 0;
+}
+
+/* World pixels to a tile index. Floor, not truncate: -0.5 is tile -1. */
+GK_API static int gk_tilemap_tile_at(double v, int tile) {
+    return (int)floor(v / (double)tile);
+}
+
+GK_API static int gk_tilemap_solid_at(const gk_tilemap *m, double x, double y) {
+    if (!m || m->tile <= 0) return 0;
+    return gk_tilemap_is_solid(m, gk_tilemap_tile_at(x, m->tile), gk_tilemap_tile_at(y, m->tile));
+}
+
+/* Step one axis and push back out. The epsilon keeps a box that ends exactly on a
+   tile boundary from counting as inside it. */
+GK_API static double gk_move_axis(const gk_tilemap *m, const gk_rect *b, double delta, int horizontal) {
+    if (!m || m->tile <= 0) return delta;   /* no map: nothing to collide with */
+    if (delta == 0) return 0;
+    const double EPS = 1e-9;
+
+    /* Sweep the leading edge across every tile it crosses, nearest first, and
+       stop at the first solid one. Checking only the destination tile would let a
+       fast mover pass through a wall it should have hit. */
+    if (horizontal) {
+        int y0 = gk_tilemap_tile_at(b->y, m->tile);
+        int y1 = gk_tilemap_tile_at(b->y + b->h - EPS, m->tile);
+        int from, to, step;
+        if (delta > 0) {
+            from = gk_tilemap_tile_at(b->x + b->w - EPS, m->tile);
+            to   = gk_tilemap_tile_at(b->x + b->w + delta - EPS, m->tile);
+            step = 1;
+        } else {
+            from = gk_tilemap_tile_at(b->x, m->tile);
+            to   = gk_tilemap_tile_at(b->x + delta, m->tile);
+            step = -1;
+        }
+        for (int tx = from; step > 0 ? tx <= to : tx >= to; tx += step) {
+            for (int ty = y0; ty <= y1; ty++) {
+                if (gk_tilemap_is_solid(m, tx, ty)) {
+                    return delta > 0 ? (tx * m->tile - (b->x + b->w))
+                                     : ((tx + 1) * m->tile - b->x);
+                }
+            }
+        }
+    } else {
+        int x0 = gk_tilemap_tile_at(b->x, m->tile);
+        int x1 = gk_tilemap_tile_at(b->x + b->w - EPS, m->tile);
+        int from, to, step;
+        if (delta > 0) {
+            from = gk_tilemap_tile_at(b->y + b->h - EPS, m->tile);
+            to   = gk_tilemap_tile_at(b->y + b->h + delta - EPS, m->tile);
+            step = 1;
+        } else {
+            from = gk_tilemap_tile_at(b->y, m->tile);
+            to   = gk_tilemap_tile_at(b->y + delta, m->tile);
+            step = -1;
+        }
+        for (int ty = from; step > 0 ? ty <= to : ty >= to; ty += step) {
+            for (int tx = x0; tx <= x1; tx++) {
+                if (gk_tilemap_is_solid(m, tx, ty)) {
+                    return delta > 0 ? (ty * m->tile - (b->y + b->h))
+                                     : ((ty + 1) * m->tile - b->y);
+                }
+            }
+        }
+    }
+    return delta;
+}
+
+/* Collide and slide: x first, then y, each against the box as it now stands. */
+GK_API static gk_rect gk_move(const gk_tilemap *m, gk_rect box, double dx, double dy) {
+    box.x += gk_move_axis(m, &box, dx, 1);
+    box.y += gk_move_axis(m, &box, dy, 0);
+    return box;
+}
+
 /* ---------- loop ---------- */
 typedef void (*gk_step_fn)(void *ud, double step);
 typedef void (*gk_draw_fn)(void *ud, double alpha);
@@ -584,6 +682,9 @@ GK_API static int gk_ecs_run(gk_world *w) {
 #define GK_MAX_MOTES 12
 #define GK_WORLD_W 1280.0
 #define GK_WORLD_H 800.0
+#define GK_TILE 40
+#define GK_TILES_X 32          /* 32 x 40 = 1280 */
+#define GK_TILES_Y 20          /* 20 x 40 = 800 */
 
 typedef struct { float x, y; } gk_vel;
 typedef struct { gk_rect box; } gk_body;
@@ -602,6 +703,8 @@ typedef struct {
     int score, best, left;   /* left = motes still to collect */
     double pulse;            /* eases out when a mote is collected */
     gk_camera cam;           /* follows the player over a world bigger than the window */
+    gk_tilemap map;          /* a solid border, so the player collides instead of bouncing */
+    unsigned char tiles[GK_TILES_X * GK_TILES_Y];
     double clock;
     uint32_t player_id;
     gk_body player_body;
@@ -627,6 +730,7 @@ GK_API static void gk_progress_store(void) {
 /* ---------- systems ---------- */
 GK_API static void sys_move(gk_world *w, gk_entity *e) {
     (void)w;
+    if (e->id == G.player_id) return;   /* the player collides with the tilemap instead */
     gk_body *b = (gk_body *)gk_ecs_comp(e, COMP_BODY);
     gk_vel *v = (gk_vel *)gk_ecs_comp(e, COMP_VEL);
     if (!b || !v) return;
@@ -661,6 +765,16 @@ GK_API static void play_enter(void *ud, const void *data) {
     G.cam.y = G.py;
     gk_world_init(&G.world);
     gk_rng_seed(&G.rng, (uint32_t)(G.best * 7919u + 12345u));
+
+    /* one ring of solid tiles around the world; the middle is empty */
+    for (int ty = 0; ty < GK_TILES_Y; ty++) {
+        for (int tx = 0; tx < GK_TILES_X; tx++) {
+            int edge = tx == 0 || ty == 0 || tx == GK_TILES_X - 1 || ty == GK_TILES_Y - 1;
+            G.tiles[ty * GK_TILES_X + tx] = edge ? 1 : 0;
+        }
+    }
+    static const unsigned char SOLID_IDS[256] = { 0, 1 };
+    G.map = (gk_tilemap){ GK_TILES_X, GK_TILES_Y, GK_TILE, G.tiles, SOLID_IDS, 1 };
 
     G.player_id = gk_ecs_create(&G.world);
     G.player_body.box = (gk_rect){ G.px, G.py, 18, 18 };
@@ -697,6 +811,10 @@ GK_API static void play_update(void *ud, double step) {
     if (gk_input_is_down(&G.input, GK_KEY_RIGHT)) G.player_vel.x += speed;
     if (gk_input_is_down(&G.input, GK_KEY_UP)) G.player_vel.y -= speed;
     if (gk_input_is_down(&G.input, GK_KEY_DOWN)) G.player_vel.y += speed;
+    /* the player is moved by hand, through the tilemap; the motes bounce in the
+       ECS system above, which is why the player is skipped there */
+    G.player_body.box = gk_move(&G.map, G.player_body.box,
+                                G.player_vel.x * step, G.player_vel.y * step);
     G.px = G.player_body.box.x;
     G.py = G.player_body.box.y;
 

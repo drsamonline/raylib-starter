@@ -41,6 +41,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_rng` | mulberry32, **bit-identical to `game-kit`'s `rng()`** — verified in the tests |
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_camera` | world↔screen, follow with easing, zoom, and bounds that keep the view inside the level |
+| `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
 | `gk_clampf`, `gk_lerp`, `gk_dist`, `gk_aabb`, `gk_circle_hit` | the maths `game-kit` exposes, same names |
 
 ### Targets
@@ -83,14 +84,16 @@ landing on the snake, and the best score round-tripping through the save file.
 `main.c` is also a small game, so nothing here is a sketch: three scenes (title, play, over), a
 player and six drifting motes that are all entities in the ECS, collection by AABB, a 30-second
 round, and a best score saved to disk. The world is 1280×800 inside a 640×400 window, so the
-camera has something to do: it follows the player and stops at the level edges. It exercises every part of the core, which is why the
+camera has something to do: it follows the player and stops at the level edges. A ring of solid
+tiles closes the world, and the player moves through `gk_move`, so it collides with the border
+instead of bouncing off it — the motes still bounce, through the ECS system. It exercises every part of the core, which is why the
 tests can drive the real game headless.
 
 ## Verified
 
 ```
 make test
-158 passed, 0 failed    (the demo game)
+184 passed, 0 failed    (the demo game)
 35 passed, 0 failed     (snake)
 ```
 
@@ -108,6 +111,11 @@ What the suite covers, all headless — no engine, no window, no display:
   byte caught by the CRC, and an empty payload
 - **ECS**: create/get/has/remove/destroy, systems matching only the entities that hold the
   components they name, systems in the order added, a full world refusing more entities
+- **the tilemap**: world-to-tile flooring (including negatives), solid ids and the out-of-bounds
+  rule, free movement exact, a wall stopping the box flush on each of four sides, a corner
+  resolving both axes, sliding along a wall without losing the free axis, a block mid-sweep
+  stopping the mover there rather than at the far wall, many 1px steps landing in exactly the
+  same place as one big sweep, a closed world, and a null or zero-tile map moving freely
 - **the camera**: world↔screen round-trips at zoom 1 and 2, the camera's own point lands at the
   viewport centre, follow closes the gap and arrives, speed 1 snaps and speed 0 does not move,
   bounds stop at half a viewport, zoomed in the view may travel further, a world smaller than the
@@ -185,7 +193,7 @@ the result. Measured on raylib 6.2, linux amd64:
 | --- | --- | --- |
 | `libraylib.a` | 2,847,000 | the engine, static |
 | game + engine, unstripped | 1,091,856 | dead code already dropped by the linker |
-| game + engine, **stripped** | **903,064** | 882 KB, with the camera |
+| game + engine, **stripped** | **904,696** | 883 KB, with the camera and tilemap |
 | 10 MB ceiling | 10,485,760 | **11.6× headroom** |
 
 `tools/x11_stubs.c` carries six weak X11 symbols so this links on a machine with no X server;

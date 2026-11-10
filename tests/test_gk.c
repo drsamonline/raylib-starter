@@ -266,6 +266,125 @@ static void test_camera(void) {
     OK("a zero zoom is repaired", z.zoom == 1.0);
 }
 
+
+/* ---------- tilemap and collide-and-slide ---------- */
+/* A 5x3 corridor of 16px tiles, solid all round:
+ *
+ *   # # # # #
+ *   # . . . #
+ *   # # # # #
+ *
+ * and a second map with one solid block inside the corridor, to check that a
+ * wall in the middle of a sweep stops the mover there and not at the far side.
+ */
+static const unsigned char TM_IDS[15] = {
+    1, 1, 1, 1, 1,
+    1, 0, 0, 0, 1,
+    1, 1, 1, 1, 1,
+};
+static const unsigned char TM_IDS_BLOCK[15] = {
+    1, 1, 1, 1, 1,
+    1, 0, 1, 0, 1,
+    1, 1, 1, 1, 1,
+};
+static const unsigned char TM_SOLID[256] = { 0, 1 };
+
+static gk_tilemap tm_make(void) {
+    gk_tilemap m = { 5, 3, 16, TM_IDS, TM_SOLID, 1 };
+    return m;
+}
+
+static void test_tilemap(void) {
+    gk_tilemap m = tm_make();
+
+    OK("a map knows its id", gk_tilemap_id(&m, 0, 0) == 1);
+    OK("an empty tile reads zero", gk_tilemap_id(&m, 1, 1) == 0);
+    OK("off the map reads -1", gk_tilemap_id(&m, -1, 0) == -1 && gk_tilemap_id(&m, 5, 0) == -1);
+
+    OK("a solid id is solid", gk_tilemap_is_solid(&m, 0, 0) == 1);
+    OK("an empty id is not", gk_tilemap_is_solid(&m, 1, 1) == 0);
+    OK("outside is solid by default", gk_tilemap_is_solid(&m, -1, 1) == 1);
+    m.outside_solid = 0;
+    OK("outside can be open", gk_tilemap_is_solid(&m, -1, 1) == 0);
+    m.outside_solid = 1;
+
+    OK("world x to tile floors", gk_tilemap_tile_at(0, 16) == 0 && gk_tilemap_tile_at(15.9, 16) == 0);
+    OK("a boundary belongs to the next tile", gk_tilemap_tile_at(16, 16) == 1);
+    OK("negative coordinates floor", gk_tilemap_tile_at(-0.5, 16) == -1);
+    OK("solid_at maps a world point", gk_tilemap_solid_at(&m, 4, 4) == 1 && gk_tilemap_solid_at(&m, 20, 20) == 0);
+
+    /* free movement is untouched */
+    gk_rect b = { 20, 20, 10, 10 };  /* inside the corridor at tile 1,1 */
+    gk_rect r = gk_move(&m, b, 2, 0);
+    OKD("free movement is exact", near(r.x, 22, 1e-9), "%.4f", r.x);
+    r = gk_move(&m, b, 0, 0);
+    OK("a zero move changes nothing", r.x == b.x && r.y == b.y);
+
+    /* into the right-hand wall: the box stops flush against it */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, 100, 0);
+    OKD("moving right stops flush at the wall", near(r.x + r.w, 64, 1e-9), "right edge %.4f", r.x + r.w);
+    OK("and the y is untouched", r.y == b.y);
+
+    /* into the left wall */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, -100, 0);
+    OKD("moving left stops flush", near(r.x, 16, 1e-9), "x %.4f", r.x);
+
+    /* down onto the floor */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, 0, 100);
+    OKD("falling stops on the floor", near(r.y + r.h, 32, 1e-9), "bottom %.4f", r.y + r.h);
+
+    /* up into the ceiling */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, 0, -100);
+    OKD("rising stops at the ceiling", near(r.y, 16, 1e-9), "y %.4f", r.y);
+
+    /* a corner: both axes resolve, so it slides rather than sticks */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, 100, 100);
+    OKD("a corner resolves both axes", near(r.x + r.w, 64, 1e-9) && near(r.y + r.h, 32, 1e-9),
+        "%.4f,%.4f", r.x + r.w, r.y + r.h);
+
+    /* sliding along a wall keeps the free axis moving */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, 100, 1);
+    OKD("a wall does not stop the free axis", near(r.x + r.w, 64, 1e-9) && near(r.y, 21, 1e-9),
+        "%.4f,%.4f", r.x + r.w, r.y);
+
+    /* a block in the middle of the sweep stops the mover there, not at the far wall */
+    gk_tilemap mb = { 5, 3, 16, TM_IDS_BLOCK, TM_SOLID, 1 };
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&mb, b, 100, 0);
+    OKD("a mid-sweep block stops the move", near(r.x + r.w, 32, 1e-9), "right edge %.4f", r.x + r.w);
+
+    /* a single 1px step does not reach the block, so it moves in full... */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&mb, b, 1, 0);
+    OKD("a step short of the block moves in full", near(r.x + r.w, 31, 1e-9), "right edge %.4f", r.x + r.w);
+    /* ...and a hundred of them stop in exactly the same place as one big sweep */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    for (int i = 0; i < 100; i++) b = gk_move(&mb, b, 1, 0);
+    OKD("many small steps stop at the same edge", near(b.x + b.w, 32, 1e-9), "right edge %.4f", b.x + b.w);
+
+    /* out of bounds is solid, so the world is closed */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(&m, b, -1000, 0);
+    OKD("the world is closed on the left", near(r.x, 16, 1e-9), "x %.4f", r.x);
+
+    /* a null map moves freely */
+    b = (gk_rect){ 20, 20, 10, 10 };
+    r = gk_move(NULL, b, 5, 5);
+    OK("a null map is free movement", r.x == 25 && r.y == 25);
+
+    /* a zero-size tile is treated as no map rather than dividing by zero */
+    gk_tilemap z = tm_make();
+    z.tile = 0;
+    r = gk_move(&z, b, 5, 5);
+    OK("a zero tile size moves freely", r.x == 25 && r.y == 25);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -579,6 +698,7 @@ int main(void) {
     test_maths();
     test_motion();
     test_camera();
+    test_tilemap();
     test_rng();
     test_loop();
     test_input();
