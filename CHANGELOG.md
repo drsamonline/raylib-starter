@@ -1,6 +1,8 @@
 # Changelog
 ## 1.0.0 — 2026-11-10
 ### Added
+- `gk_machine`: the same shape as `game-kit`'s `Machine` — named states, a transition table,
+  enter/exit handlers, `can`/`send` refusing what the table does not allow
 - `gk_tween_chain`: tweens stepped in order, with the overshoot carried across a boundary
 - `gk_audio`: a thin wrapper over raylib's audio device, with its own headless suite that checks
   call routing and volume clamping - what it cannot check is that anything is audible
@@ -21,7 +23,7 @@
 - Android `ndk-build` scaffolding, marked unbuilt
 
 ### Verified
-- 281 assertions in the demo suite, 28 in the audio suite, 35 in snake, all passing under gcc and zig cc
+- 309 assertions in the demo suite, 28 in the audio suite, 35 in snake, all passing under gcc and zig cc
 - both games run 120 frames headless past the title scene (2551 and 712 draw calls), driven by a scripted autoplay so the play renderer executes
 - real binary: 931,272 bytes stripped against raylib 6.2 - 11x under the ceiling
 - warning-free under `-Wall -Wextra -Werror` in eight configurations

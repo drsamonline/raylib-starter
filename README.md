@@ -42,6 +42,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_camera` | world↔screen, follow with easing, zoom, deadzone, and bounds that keep the view inside the level |
 | `gk_shake` | a camera kick as an elapsed-time effect: `make`/`start`/`step`/`running`, decaying to zero |
+| `gk_machine` | named states, a transition table, enter/exit handlers; an event the table does not allow is refused, and names are copied into the machine |
 | `gk_tween_chain` | several tweens stepped in order, with the overshoot carried so the chain keeps its total time |
 | `gk_audio` | a thin wrapper over raylib's device: `init`/`load`/`play`/`stop`/`volume`/`playing`, volume clamped, calls routed and counted headless |
 | `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
@@ -98,7 +99,7 @@ tests can drive the real game headless.
 
 ```
 make test
-281 passed, 0 failed    (the demo game)
+309 passed, 0 failed    (the demo game)
 28 passed, 0 failed     (audio)
 35 passed, 0 failed     (snake)
 ```

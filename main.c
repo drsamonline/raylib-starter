@@ -277,6 +277,123 @@ GK_API static int gk_chain_done(const gk_tween_chain *c) {
     return (!c || c->count == 0) ? 1 : (c->at >= c->count - 1 && c->step[c->count - 1].done);
 }
 
+/* ---------- state machine ---------- */
+/* The same shape as game-kit's Machine: named states, a table of allowed
+   transitions, and enter/exit handlers. A transition the table does not allow is
+   refused rather than taken, so an illegal change is a bug you can see. */
+#ifndef GK_MAX_STATES
+#define GK_MAX_STATES 8
+#endif
+#ifndef GK_MAX_EVENTS
+#define GK_MAX_EVENTS 8
+#endif
+
+/* Names are COPIED into the machine, not held by pointer: a caller that builds a
+   name in a buffer would otherwise alias every state to the same string. */
+#define GK_NAME_MAX 24
+
+typedef struct {
+    char name[GK_NAME_MAX];
+    void (*enter)(void *ud, const char *from);
+    void (*exit)(void *ud, const char *to);
+} gk_state;
+
+typedef struct {
+    int from;   /* state index */
+    int to;     /* state index */
+    char event[GK_NAME_MAX];
+} gk_transition;
+
+typedef struct {
+    gk_state states[GK_MAX_STATES];
+    int state_count;
+    gk_transition transitions[GK_MAX_EVENTS * GK_MAX_STATES];
+    int transition_count;
+    int current;      /* state index, -1 before a start */
+    void *ud;
+} gk_machine;
+
+GK_API static void gk_machine_init(gk_machine *m, void *ud) {
+    if (!m) return;
+    memset(m, 0, sizeof *m);
+    m->current = -1;
+    m->ud = ud;
+}
+
+GK_API static int gk_machine_state(gk_machine *m, const char *name,
+                                   void (*enter)(void *, const char *),
+                                   void (*exit)(void *, const char *)) {
+    if (!m || !name || m->state_count >= GK_MAX_STATES) return -1;
+    for (int i = 0; i < m->state_count; i++) if (strcmp(m->states[i].name, name) == 0) return i;
+    if (strlen(name) >= GK_NAME_MAX) return -1;
+    gk_state st;
+    memset(&st, 0, sizeof st);
+    strncpy(st.name, name, GK_NAME_MAX - 1);
+    st.enter = enter;
+    st.exit = exit;
+    m->states[m->state_count] = st;
+    return m->state_count++;
+}
+
+GK_API static int gk_machine_find(const gk_machine *m, const char *name) {
+    if (!m || !name) return -1;
+    for (int i = 0; i < m->state_count; i++) if (strcmp(m->states[i].name, name) == 0) return i;
+    return -1;
+}
+
+GK_API static int gk_machine_transition(gk_machine *m, const char *from, const char *event, const char *to) {
+    if (!m || !event) return -1;
+    int f = gk_machine_find(m, from), t = gk_machine_find(m, to);
+    if (f < 0 || t < 0) return -1;
+    int cap = (int)(sizeof m->transitions / sizeof m->transitions[0]);
+    if (m->transition_count >= cap || strlen(event) >= GK_NAME_MAX) return -1;
+    gk_transition tr;
+    memset(&tr, 0, sizeof tr);
+    tr.from = f;
+    tr.to = t;
+    strncpy(tr.event, event, GK_NAME_MAX - 1);
+    m->transitions[m->transition_count++] = tr;
+    return 0;
+}
+
+/* Enter a state directly, running no exit handler: the boot case. */
+GK_API static int gk_machine_start(gk_machine *m, const char *name) {
+    int i = gk_machine_find(m, name);
+    if (!m || i < 0) return -1;
+    m->current = i;
+    if (m->states[i].enter) m->states[i].enter(m->ud, NULL);
+    return 0;
+}
+
+GK_API static const char *gk_machine_current(const gk_machine *m) {
+    if (!m || m->current < 0 || m->current >= m->state_count) return NULL;
+    return m->states[m->current].name;
+}
+
+GK_API static int gk_machine_can(const gk_machine *m, const char *event) {
+    if (!m || m->current < 0 || !event) return 0;
+    for (int i = 0; i < m->transition_count; i++) {
+        if (m->transitions[i].from == m->current && strcmp(m->transitions[i].event, event) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Returns 1 when the transition was taken, 0 when the table refused it. */
+GK_API static int gk_machine_send(gk_machine *m, const char *event) {
+    if (!m || m->current < 0 || !event) return 0;
+    for (int i = 0; i < m->transition_count; i++) {
+        if (m->transitions[i].from != m->current) continue;
+        if (strcmp(m->transitions[i].event, event) != 0) continue;
+        int to = m->transitions[i].to;
+        if (m->states[m->current].exit) m->states[m->current].exit(m->ud, m->states[to].name);
+        const char *from = m->states[m->current].name;
+        m->current = to;
+        if (m->states[to].enter) m->states[to].enter(m->ud, from);
+        return 1;
+    }
+    return 0;
+}
+
 /* ---------- camera ---------- */
 /* A camera is a point in the world that sits at the middle of the viewport, plus
    a zoom. World to screen is a translate and a scale; screen to world is its

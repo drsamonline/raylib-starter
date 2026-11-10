@@ -741,6 +741,78 @@ static void test_chain(void) {
     OK("stepping a null chain is safe", gk_chain_value(NULL) == 0 && gk_chain_done(NULL) == 1);
 }
 
+
+/* ---------- state machine ---------- */
+/* its own tracer: the scenes tests define theirs later in the file */
+static char m_trace[64];
+static void m_trace_add(const char *s) { strncat(m_trace, s, sizeof m_trace - strlen(m_trace) - 1); }
+static void st_enter(void *ud, const char *from) { (void)ud; (void)from; m_trace_add("+"); }
+static void st_exit(void *ud, const char *to) { (void)ud; (void)to; m_trace_add("-"); }
+
+static void test_machine(void) {
+    gk_machine m;
+    gk_machine_init(&m, NULL);
+    OK("a new machine has no current state", gk_machine_current(&m) == NULL);
+
+    int boot = gk_machine_state(&m, "boot", st_enter, st_exit);
+    int menu = gk_machine_state(&m, "menu", st_enter, st_exit);
+    int play = gk_machine_state(&m, "play", st_enter, st_exit);
+    OK("states get indices", boot == 0 && menu == 1 && play == 2);
+    OKD("adding the same name returns the same index", gk_machine_state(&m, "menu", NULL, NULL) == menu, "%d", menu);
+    OK("an unknown state is -1", gk_machine_find(&m, "nope") == -1);
+
+    OK("a transition needs both states", gk_machine_transition(&m, "menu", "start", "nope") == -1);
+    OK("a real transition is accepted", gk_machine_transition(&m, "menu", "start", "play") == 0);
+    OK("and another", gk_machine_transition(&m, "play", "quit", "menu") == 0);
+
+    m_trace[0] = 0;
+    OK("start enters without an exit", gk_machine_start(&m, "menu") == 0);
+    OKD("the enter handler ran once", strcmp(m_trace, "+") == 0, "%s", m_trace);
+    OK("the current state is menu", strcmp(gk_machine_current(&m), "menu") == 0);
+
+    OK("can() sees an allowed event", gk_machine_can(&m, "start") == 1);
+    OK("can() refuses an unknown one", gk_machine_can(&m, "quit") == 0);
+
+    m_trace[0] = 0;
+    OKD("send takes the transition", gk_machine_send(&m, "start") == 1, "%s", m_trace);
+    OKD("exit then enter", strcmp(m_trace, "-+") == 0, "%s", m_trace);
+    OK("the current state moved", strcmp(gk_machine_current(&m), "play") == 0);
+
+    m_trace[0] = 0;
+    OK("a refused event returns 0", gk_machine_send(&m, "start") == 0);
+    OKD("and runs no handler", strcmp(m_trace, "") == 0, "%s", m_trace);
+    OK("the state is unchanged", strcmp(gk_machine_current(&m), "play") == 0);
+
+    OK("going back is allowed by its own rule", gk_machine_send(&m, "quit") == 1);
+    OK("and lands on menu", strcmp(gk_machine_current(&m), "menu") == 0);
+
+    /* no start means nothing can be sent */
+    gk_machine fresh;
+    gk_machine_init(&fresh, NULL);
+    gk_machine_state(&fresh, "a", NULL, NULL);
+    OK("an unstarted machine refuses events", gk_machine_send(&fresh, "go") == 0);
+    OK("and has no current state", gk_machine_current(&fresh) == NULL);
+    OK("starting an unknown state is refused", gk_machine_start(&fresh, "nope") == -1);
+
+    /* null safety */
+    OK("a null machine has no current", gk_machine_current(NULL) == NULL);
+    OK("a null machine cannot send", gk_machine_send(NULL, "x") == 0);
+    OK("a null machine cannot add a state", gk_machine_state(NULL, "x", NULL, NULL) == -1);
+    gk_machine_init(NULL, NULL);
+    OK("initialising a null machine is safe", 1);
+
+    /* the state cap holds */
+    gk_machine big;
+    gk_machine_init(&big, NULL);
+    int added = 0;
+    for (int i = 0; i < GK_MAX_STATES + 3; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "s%d", i);
+        if (gk_machine_state(&big, name, NULL, NULL) >= 0) added++;
+    }
+    OKD("states cap at GK_MAX_STATES", added == GK_MAX_STATES, "%d added", added);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -1060,6 +1132,7 @@ int main(void) {
     test_deferred();
     test_shake();
     test_chain();
+    test_machine();
     test_sprites();
     test_rng();
     test_loop();
