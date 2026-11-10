@@ -277,6 +277,12 @@ GK_API static int gk_chain_done(const gk_tween_chain *c) {
     return (!c || c->count == 0) ? 1 : (c->at >= c->count - 1 && c->step[c->count - 1].done);
 }
 
+/* A null-safe string compare, since gk_machine_current can return NULL. */
+GK_API static int gk_str_eq(const char *a, const char *b) {
+    if (!a || !b) return (a == b) ? 1 : 0;
+    return strcmp(a, b) == 0;
+}
+
 /* ---------- state machine ---------- */
 /* The same shape as game-kit's Machine: named states, a table of allowed
    transitions, and enter/exit handlers. A transition the table does not allow is
@@ -1161,6 +1167,7 @@ typedef struct {
     int score, best, left;   /* left = motes still to collect */
     gk_tween_t pulse;        /* 1 -> 0 over 300ms when a mote is collected */
     gk_shake shake;          /* a small camera kick on each collect */
+    gk_machine phase;        /* warmup -> live -> finished, inside the play scene */
     gk_camera cam;           /* follows the player over a world bigger than the window */
     gk_tilemap map;          /* a solid border, so the player collides instead of bouncing */
     gk_anim mote_anim;       /* the motes pulse through four frames */
@@ -1239,6 +1246,16 @@ GK_API static void play_enter(void *ud, const void *data) {
     G.map = (gk_tilemap){ GK_TILES_X, GK_TILES_Y, GK_TILE, G.tiles, SOLID_IDS, 1 };
     G.mote_anim = (gk_anim){ { 12, 12, 2, 4 }, 6.0, 0, 3, 1 };
 
+    /* the phase machine: the scene draws, the machine decides whether the round
+       is accepting play yet */
+    gk_machine_init(&G.phase, NULL);
+    gk_machine_state(&G.phase, "warmup", NULL, NULL);
+    gk_machine_state(&G.phase, "live", NULL, NULL);
+    gk_machine_state(&G.phase, "finished", NULL, NULL);
+    gk_machine_transition(&G.phase, "warmup", "go", "live");
+    gk_machine_transition(&G.phase, "live", "end", "finished");
+    gk_machine_start(&G.phase, "warmup");
+
     G.player_id = gk_ecs_create(&G.world);
     G.player_body.box = (gk_rect){ G.px, G.py, 18, 18 };
     G.player_vel = (gk_vel){ 0, 0 };
@@ -1308,7 +1325,10 @@ GK_API static void play_update(void *ud, double step) {
     }
     gk_ecs_flush(&G.world);
 
+    if (G.clock >= 2.0) gk_machine_send(&G.phase, "go");   /* warmup is over */
+
     if (G.left <= 0 || G.clock > 30.0) {
+        if (gk_str_eq(gk_machine_current(&G.phase), "finished") == 0) gk_machine_send(&G.phase, "end");
         if (G.score > G.best) { G.best = G.score; gk_progress_store(); }
         gk_scenes_go(&G.scenes, "over", &G, NULL);
     }
@@ -1377,6 +1397,9 @@ GK_API static void play_render(void *ud, double alpha) {
         DrawRectangleRec((Rectangle){ (float)mx, (float)my, (float)mw, (float)mh }, GREEN);
     }
     DrawText(TextFormat("score %d   left %d   %0.0fs", G.score, G.left, G.clock), 12, 10, 18, RAYWHITE);
+    if (gk_str_eq(gk_machine_current(&G.phase), "warmup")) {
+        DrawText("ready", 300, 190, 24, Fade(RAYWHITE, 0.6f));
+    }
 }
 
 GK_API static void over_render(void *ud, double alpha) {

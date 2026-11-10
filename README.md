@@ -42,7 +42,7 @@ gk_rng_seed(&G.rng, 12345);                                         // the same 
 | `gk_ease` / `gk_spring` / `gk_tween` | the eleven easing curves, the settle-time spring presets and a tween — **matching `motion-kit` to 1e-9** |
 | `gk_camera` | world↔screen, follow with easing, zoom, deadzone, and bounds that keep the view inside the level |
 | `gk_shake` | a camera kick as an elapsed-time effect: `make`/`start`/`step`/`running`, decaying to zero |
-| `gk_machine` | named states, a transition table, enter/exit handlers; an event the table does not allow is refused, and names are copied into the machine |
+| `gk_machine` | named states, a transition table, enter/exit handlers; an event the table does not allow is refused, and names are copied into the machine. The demo's round uses one: warmup → live → finished |
 | `gk_tween_chain` | several tweens stepped in order, with the overshoot carried so the chain keeps its total time |
 | `gk_audio` | a thin wrapper over raylib's device: `init`/`load`/`play`/`stop`/`volume`/`playing`, volume clamped, calls routed and counted headless |
 | `gk_tilemap` / `gk_move` | a grid of tiles with solid ids, and collide-and-slide: each axis swept and pushed back out, so a corner slides instead of sticking |
@@ -89,7 +89,7 @@ landing on the snake, and the best score round-tripping through the save file.
 
 `main.c` is also a small game, so nothing here is a sketch: three scenes (title, play, over), a
 player and six drifting motes that are all entities in the ECS, collection by AABB, a 30-second
-round, and a best score saved to disk. The world is 1280×800 inside a 640×400 window, so the
+round with a two-second warmup phase the scene draws "ready" through, and a best score saved to disk. The world is 1280×800 inside a 640×400 window, so the
 camera has something to do: it follows the player and stops at the level edges. A ring of solid
 tiles closes the world, and the player moves through `gk_move`, so it collides with the border
 instead of bouncing off it — the motes still bounce, through the ECS system. It exercises every part of the core, which is why the
@@ -99,7 +99,7 @@ tests can drive the real game headless.
 
 ```
 make test
-309 passed, 0 failed    (the demo game)
+320 passed, 0 failed    (the demo game)
 28 passed, 0 failed     (audio)
 35 passed, 0 failed     (snake)
 ```

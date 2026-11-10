@@ -813,6 +813,35 @@ static void test_machine(void) {
     OKD("states cap at GK_MAX_STATES", added == GK_MAX_STATES, "%d added", added);
 }
 
+
+/* ---------- the round's phase machine ---------- */
+static void test_phase(void) {
+    /* the same three states the play scene builds */
+    gk_machine m;
+    gk_machine_init(&m, NULL);
+    gk_machine_state(&m, "warmup", NULL, NULL);
+    gk_machine_state(&m, "live", NULL, NULL);
+    gk_machine_state(&m, "finished", NULL, NULL);
+    gk_machine_transition(&m, "warmup", "go", "live");
+    gk_machine_transition(&m, "live", "end", "finished");
+    gk_machine_start(&m, "warmup");
+
+    OK("the round starts in warmup", gk_str_eq(gk_machine_current(&m), "warmup"));
+    OK("warmup can go", gk_machine_can(&m, "go") == 1);
+    OK("warmup cannot end", gk_machine_can(&m, "end") == 0);
+    OK("go moves it to live", gk_machine_send(&m, "go") == 1 && gk_str_eq(gk_machine_current(&m), "live"));
+    OK("live cannot go again", gk_machine_send(&m, "go") == 0);
+    OK("live can end", gk_machine_send(&m, "end") == 1 && gk_str_eq(gk_machine_current(&m), "finished"));
+    OK("finished accepts nothing", gk_machine_send(&m, "go") == 0 && gk_machine_send(&m, "end") == 0);
+}
+
+static void test_str_eq(void) {
+    OK("equal strings match", gk_str_eq("a", "a") == 1);
+    OK("different strings do not", gk_str_eq("a", "b") == 0);
+    OK("two nulls match", gk_str_eq(NULL, NULL) == 1);
+    OK("null and a string do not", gk_str_eq(NULL, "a") == 0 && gk_str_eq("a", NULL) == 0);
+}
+
 /* ---------- loop ---------- */
 static int g_steps = 0;
 static double g_alpha = -1;
@@ -1133,6 +1162,8 @@ int main(void) {
     test_shake();
     test_chain();
     test_machine();
+    test_phase();
+    test_str_eq();
     test_sprites();
     test_rng();
     test_loop();
