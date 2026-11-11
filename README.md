@@ -3,6 +3,8 @@
 [![test](https://github.com/drsamonline/raylib-starter/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/raylib-starter/actions/workflows/test.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 
+
+![Screenshot](docs/shot.png)
 **One C file, a fixed timestep, scenes, save and an ECS — on raylib.** The C answer to
 `game-kit`: the same names, the same behaviour, and the same tests, on a 2.4 MB engine instead
 of a browser.
